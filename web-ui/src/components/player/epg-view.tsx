@@ -36,7 +36,7 @@ export function EPGView({
     if (!programs || programs.length === 0) return new Map<string, EPGProgram[]>();
 
     const now = new Date();
-    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6);
     const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 2);
 
     // Filter programs by date range

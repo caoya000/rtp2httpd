@@ -1,0 +1,301 @@
+name: Release 21.02.1
+
+on:
+  # 手动触发时，会提供一个输入框让您填写标签
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'The git tag to build'
+        required: true
+        type: string
+
+  release:
+    types:
+      - published
+
+env:
+  RELEASE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || github.event.inputs.tag }}
+
+jobs:
+  frontend:
+    name: Build Frontend
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: web-ui
+
+      - name: Build frontend
+        run: npm run build
+        working-directory: web-ui
+
+      - name: Save generated pages
+        run: |
+          cp src/status_page.h /tmp/status_page.h
+          cp src/player_page.h /tmp/player_page.h
+      - name: Upload page artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-pages
+          path: |
+            src/status_page.h
+            src/player_page.h
+          if-no-files-found: error
+
+      - name: Determine branch to update
+        id: push_branch
+        run: |
+          set -euo pipefail
+          TARGET="${{ github.event.release.target_commitish }}"
+          DEFAULT="${{ github.event.repository.default_branch }}"
+          if [ -z "$TARGET" ]; then
+            TARGET="$DEFAULT"
+          fi
+          if git ls-remote --exit-code --heads origin "$TARGET" >/dev/null 2>&1; then
+            echo "branch=$TARGET" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Branch $TARGET not found; defaulting to $DEFAULT"
+            echo "branch=$DEFAULT" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Commit updated frontend pages
+        if: steps.push_branch.outputs.branch != ''
+        env:
+          PUSH_BRANCH: ${{ steps.push_branch.outputs.branch }}
+        run: |
+          set -euo pipefail
+          git fetch origin "$PUSH_BRANCH"
+          git checkout -B "$PUSH_BRANCH" "origin/$PUSH_BRANCH"
+          cp /tmp/status_page.h src/status_page.h
+          cp /tmp/player_page.h src/player_page.h
+          if git diff --quiet --exit-code src/status_page.h src/player_page.h; then
+            echo "Frontend pages unchanged; skipping commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add src/status_page.h src/player_page.h
+          git commit -m "chore: update frontend pages for ${{ github.event.release.tag_name }}"
+          git push origin "HEAD:$PUSH_BRANCH"
+  ipk:
+    name: Package ${{ matrix.arch }}
+    needs: frontend
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        arch:
+          - aarch64_generic
+        sdk:
+          - immortalwrt/sdk:aarch64_generic-openwrt-21.02.1
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Download frontend pages artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-pages
+          path: artifacts
+      
+      - name: Use generated frontend pages
+        run: |
+          cp artifacts/status_page.h src/status_page.h
+          cp artifacts/player_page.h src/player_page.h
+      - name: Move src to openwrt-support
+        run: mv openwrt-support ../ && mkdir -p ../openwrt-support/rtp2httpd/src && mv ./* ../openwrt-support/rtp2httpd/src && mv ../openwrt-support ./
+
+      - name: Generate Correct Makefiles
+        run: |
+          RELEASE_TAG="${{ env.RELEASE_TAG }}"
+          RELEASE_VERSION="${RELEASE_TAG#v}"
+          PKG_VERSION=$(echo "$RELEASE_VERSION" | sed 's/-/~/g')
+          
+          RT_MAKEFILE="openwrt-support/rtp2httpd/Makefile"
+          LUCI_MAKEFILE="openwrt-support/luci-app-rtp2httpd/Makefile"
+          echo "Generating rtp2httpd/Makefile with version ${PKG_VERSION}"
+          rm -f "$RT_MAKEFILE"
+          echo 'include $(TOPDIR)/rules.mk' >> "$RT_MAKEFILE"
+          echo '' >> "$RT_MAKEFILE"
+          echo 'PKG_NAME:=rtp2httpd' >> "$RT_MAKEFILE"
+          echo "PKG_VERSION:=${PKG_VERSION}" >> "$RT_MAKEFILE"
+          echo 'PKG_RELEASE:=1' >> "$RT_MAKEFILE"
+          echo 'PKG_MAINTAINER:=Stackie Jia <jsq2627@gmail.com>' >> "$RT_MAKEFILE"
+          echo '' >> "$RT_MAKEFILE"
+          echo 'PKG_BUILD_DIR:=$(BUILD_DIR)/rtp2httpd-$(PKG_VERSION)' >> "$RT_MAKEFILE"
+          echo 'PKG_FIXUP:=autoreconf' >> "$RT_MAKEFILE"
+          echo '' >> "$RT_MAKEFILE"
+          echo 'include $(INCLUDE_DIR)/package.mk' >> "$RT_MAKEFILE"
+          echo '' >> "$RT_MAKEFILE"
+          echo 'define Package/rtp2httpd' >> "$RT_MAKEFILE"
+          echo -e '\tSECTION:=net' >> "$RT_MAKEFILE"
+          echo -e '\tCATEGORY:=Network' >> "$RT_MAKEFILE"
+          echo -e '\tTITLE:=Convert multicast RTP/UDP IPTV streams into HTTP streams with FCC support' >> "$RT_MAKEFILE"
+          echo -e '\tURL:=https://github.com/stackia/rtp2httpd' >> "$RT_MAKEFILE"
+          echo 'endef' >> "$RT_MAKEFILE"
+          echo '' >> "$RT_MAKEFILE"
+          echo 'define Package/rtp2httpd/description' >> "$RT_MAKEFILE"
+          echo -e '\trtp2httpd converts multicast RTP/UDP media into http stream.' >> "$RT_MAKEFILE"
+          echo -e '\tIt acts as a tiny HTTP server. When client connect,' >> "$RT_MAKEFILE"
+          echo -e '\tpre-configured multicast RTP service is choosen by URL.' >> "$RT_MAKEFILE"
+          echo -e '\tProgram then join pre-configured multicast address and translate' >> "$RT_MAKEFILE"
+          echo -e '\tincoming RTP data to HTTP stream.' >> "$RT_MAKEFILE"
+          echo 'endef' >> "$RT_MAKEFILE"
+          echo '' >> "$RT_MAKEFILE"
+          echo 'CONFIGURE_ARGS += --enable-optimization=-O3' >> "$RT_MAKEFILE"
+          echo '' >> "$RT_MAKEFILE"
+          echo 'define Package/rtp2httpd/conffiles' >> "$RT_MAKEFILE"
+          echo '/etc/config/rtp2httpd' >> "$RT_MAKEFILE"
+          echo 'endef' >> "$RT_MAKEFILE"
+          echo '' >> "$RT_MAKEFILE"
+          echo 'define Package/rtp2httpd/install' >> "$RT_MAKEFILE"
+          echo -e '\t$(INSTALL_DIR) $(1)/etc/init.d $(1)/etc/config' >> "$RT_MAKEFILE"
+          echo -e '\t$(INSTALL_CONF) ./files/rtp2httpd.conf $(1)/etc/config/rtp2httpd' >> "$RT_MAKEFILE"
+          echo -e '\t$(INSTALL_BIN) ./files/rtp2httpd.init $(1)/etc/init.d/rtp2httpd' >> "$RT_MAKEFILE"
+          echo -e '\t$(INSTALL_DIR) $(1)/usr/bin/' >> "$RT_MAKEFILE"
+          echo -e '\t$(INSTALL_BIN) $(PKG_BUILD_DIR)/src/rtp2httpd $(1)/usr/bin' >> "$RT_MAKEFILE"
+          echo -e '\t$(INSTALL_CONF) $(PKG_BUILD_DIR)/rtp2httpd.conf $(1)/etc' >> "$RT_MAKEFILE"
+          echo 'endef' >> "$RT_MAKEFILE"
+          echo '' >> "$RT_MAKEFILE"
+          echo '$(eval $(call BuildPackage,rtp2httpd))' >> "$RT_MAKEFILE"
+
+          LUCI_APP_DIR="openwrt-support/luci-app-rtp2httpd"
+          echo "Creating simplified Lua controller..."
+          mkdir -p "${LUCI_APP_DIR}/luasrc/controller"
+          echo 'module("luci.controller.rtp2httpd", package.seeall)' > "${LUCI_APP_DIR}/luasrc/controller/rtp2httpd.lua"
+          echo 'function index()' >> "${LUCI_APP_DIR}/luasrc/controller/rtp2httpd.lua"
+          echo '    entry({"admin", "services", "rtp2httpd"}, cbi("rtp2httpd"), "Rtp2httpd", 90).dependent = false' >> "${LUCI_APP_DIR}/luasrc/controller/rtp2httpd.lua"
+          echo 'end' >> "${LUCI_APP_DIR}/luasrc/controller/rtp2httpd.lua"
+          
+          echo "Creating i18n translation file..."
+          mkdir -p "${LUCI_APP_DIR}/po/zh-cn"
+          PO_FILE="${LUCI_APP_DIR}/po/zh-cn/luci-app-rtp2httpd.po"
+          echo 'msgid ""' > "$PO_FILE"
+          echo 'msgstr ""' >> "$PO_FILE"
+          echo '"Content-Type: text/plain; charset=UTF-8\\n"' >> "$PO_FILE"
+          echo '"Content-Transfer-Encoding: 8bit\\n"' >> "$PO_FILE"
+          echo '' >> "$PO_FILE"
+          echo 'msgid "Rtp2httpd"' >> "$PO_FILE"
+          echo 'msgstr "Rtp2httpd 服务"' >> "$PO_FILE"
+          echo '' >> "$PO_FILE"
+          echo 'msgid "rtp2httpd converts multicast RTP/UDP media into http stream. Here you can configure the settings."' >> "$PO_FILE"
+          echo 'msgstr "rtp2httpd 将组播 RTP/UDP 媒体转换为 HTTP 流。在这里进行配置。"' >> "$PO_FILE"
+          echo '' >> "$PO_FILE"
+          echo 'msgid "Enable rtp2httpd service"' >> "$PO_FILE"
+          echo 'msgstr "启用 rtp2httpd 服务"' >> "$PO_FILE"
+          echo '' >> "$PO_FILE"
+          echo 'msgid "Restart Service"' >> "$PO_FILE"
+          echo 'msgstr "重启服务"' >> "$PO_FILE"
+
+          echo "Creating Lua model with translation loader..."
+          mkdir -p "${LUCI_APP_DIR}/luasrc/model/cbi"
+          LUA_MODEL_FILE="${LUCI_APP_DIR}/luasrc/model/cbi/rtp2httpd.lua"
+          echo '-- Final version with explicit i18n loading.' > "$LUA_MODEL_FILE"
+          echo 'local i18n = require "luci.i18n"' >> "$LUA_MODEL_FILE"
+          echo 'i18n.loadc("luci-app-rtp2httpd")' >> "$LUA_MODEL_FILE"
+          echo 'local sys = require "luci.sys"' >> "$LUA_MODEL_FILE"
+          echo 'local uci = require "luci.model.uci".cursor()' >> "$LUA_MODEL_FILE"
+          echo 'm = Map("rtp2httpd", "Rtp2httpd", "rtp2httpd converts multicast RTP/UDP media into http stream. Here you can configure the settings.")' >> "$LUA_MODEL_FILE"
+          echo 'm.i18n = "luci-app-rtp2httpd"' >> "$LUA_MODEL_FILE"
+          echo 's = m:section(TypedSection, "rtp2httpd", "rtp2httpd")' >> "$LUA_MODEL_FILE"
+          echo 's.anonymous = true' >> "$LUA_MODEL_FILE"
+          echo 's.addremove = false' >> "$LUA_MODEL_FILE"
+          echo 'o = s:option(Flag, "disabled", "Enable rtp2httpd service")' >> "$LUA_MODEL_FILE"
+          echo 'o.enabled = "0"; o.disabled = "1"; o.default = o.disabled; o.rmempty = false' >> "$LUA_MODEL_FILE"
+          echo 'o = s:option(Button, "_restart", "Restart Service")' >> "$LUA_MODEL_FILE"
+          echo 'o.inputtitle = "Restart Service"; o.inputstyle = "apply"' >> "$LUA_MODEL_FILE"
+          echo 'function o.write(self, section)' >> "$LUA_MODEL_FILE"
+          echo '    sys.exec("/etc/init.d/rtp2httpd restart >/dev/null 2>&1")' >> "$LUA_MODEL_FILE"
+          echo 'end' >> "$LUA_MODEL_FILE"
+          echo 'function m.on_after_commit(self)' >> "$LUA_MODEL_FILE"
+          echo '    local section_id = uci:get_first("rtp2httpd", "rtp2httpd")' >> "$LUA_MODEL_FILE"
+          echo '    if section_id then' >> "$LUA_MODEL_FILE"
+          echo '        uci:set("rtp2httpd", section_id, "respawn", "1")' >> "$LUA_MODEL_FILE"
+          echo '        uci:set("rtp2httpd", section_id, "use_config_file", "1")' >> "$LUA_MODEL_FILE"
+          echo '        local is_disabled = uci:get("rtp2httpd", section_id, "disabled")' >> "$LUA_MODEL_FILE"
+          echo '        if is_disabled == "0" then' >> "$LUA_MODEL_FILE"
+          echo '            sys.exec("/etc/init.d/rtp2httpd start >/dev/null 2>&1")' >> "$LUA_MODEL_FILE"
+          echo '        else' >> "$LUA_MODEL_FILE"
+          echo '            sys.exec("/etc/init.d/rtp2httpd stop >/dev/null 2>&1")' >> "$LUA_MODEL_FILE"
+          echo '        end' >> "$LUA_MODEL_FILE"
+          echo '        uci:commit("rtp2httpd")' >> "$LUA_MODEL_FILE"
+          echo '    end' >> "$LUA_MODEL_FILE"
+          echo 'end' >> "$LUA_MODEL_FILE"
+          echo 'return m' >> "$LUA_MODEL_FILE"
+          
+          echo "Generating final luci-app-rtp2httpd/Makefile..."
+          rm -f "$LUCI_MAKEFILE"
+          echo 'include $(TOPDIR)/rules.mk' >> "$LUCI_MAKEFILE"
+          echo '' >> "$LUCI_MAKEFILE"
+          echo 'PKG_NAME:=luci-app-rtp2httpd' >> "$LUCI_MAKEFILE"
+          echo "PKG_VERSION:=${PKG_VERSION}" >> "$LUCI_MAKEFILE"
+          echo 'PKG_RELEASE:=1' >> "$LUCI_MAKEFILE"
+          echo 'PKG_MAINTAINER:=Stackie Jia <jsq2727@gmail.com>' >> "$LUCI_MAKEFILE"
+          echo '' >> "$LUCI_MAKEFILE"
+          echo 'include $(TOPDIR)/feeds/luci/luci.mk' >> "$LUCI_MAKEFILE"
+          echo '' >> "$LUCI_MAKEFILE"
+          echo 'LUCI_TITLE:=LuCI Support for rtp2httpd' >> "$LUCI_MAKEFILE"
+          echo 'LUCI_PKGARCH:=all' >> "$LUCI_MAKEFILE"
+          echo 'LUCI_DEPENDS:=+rtp2httpd' >> "$LUCI_MAKEFILE"
+          echo '' >> "$LUCI_MAKEFILE"
+          echo 'define Package/luci-app-rtp2httpd/install' >> "$LUCI_MAKEFILE"
+          echo '	$(INSTALL_DIR) $(1)/usr/lib/lua/luci/controller' >> "$LUCI_MAKEFILE"
+          echo '	$(INSTALL_BIN) ./luasrc/controller/rtp2httpd.lua $(1)/usr/lib/lua/luci/controller/' >> "$LUCI_MAKEFILE"
+          echo '' >> "$LUCI_MAKEFILE"
+          echo '	$(INSTALL_DIR) $(1)/usr/lib/lua/luci/model/cbi' >> "$LUCI_MAKEFILE"
+          echo '	$(INSTALL_BIN) ./luasrc/model/cbi/rtp2httpd.lua $(1)/usr/lib/lua/luci/model/cbi/' >> "$LUCI_MAKEFILE"
+          echo 'endef' >> "$LUCI_MAKEFILE"
+          echo '' >> "$LUCI_MAKEFILE"
+          echo '$(eval $(call BuildPackage,luci-app-rtp2httpd))' >> "$LUCI_MAKEFILE"
+          sed -i "s/1\.0\.0/$RELEASE_VERSION/g" openwrt-support/rtp2httpd/src/configure.ac
+      - name: Create and prepare artifacts directory
+        run: |
+          mkdir -p ${{ github.workspace }}/output_artifacts
+          chmod 777 ${{ github.workspace }}/output_artifacts
+      - name: Build packages and copy artifacts
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}:/workspace \
+            -v ${{ github.workspace }}/output_artifacts:/output \
+            ${{ matrix.sdk }} \
+            /bin/bash -c "
+              set -ex
+              echo 'src-link custom /workspace/openwrt-support' >> feeds.conf.default
+              ./scripts/feeds update -a
+              ./scripts/feeds install -a
+              make defconfig
+              echo 'CONFIG_PACKAGE_rtp2httpd=m' >> .config
+              echo 'CONFIG_PACKAGE_luci-app-rtp2httpd=m' >> .config
+              make defconfig
+              make package/rtp2httpd/compile V=s
+              make package/luci-app-rtp2httpd/compile V=s
+              cp -Rp /home/build/immortalwrt/bin/* /output/
+            "
+            
+      - name: List build artifacts for debugging
+        run: ls -Rl output_artifacts
+
+      - name: Upload Packages as Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: packages-${{ matrix.arch }}
+          path: |
+            output_artifacts/packages/${{ matrix.arch }}/base/*.ipk
+            output_artifacts/packages/${{ matrix.arch }}/custom/*.ipk
+          if-no-files-found: error

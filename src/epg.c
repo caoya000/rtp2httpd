@@ -8,6 +8,8 @@
 #include <strings.h>
 #include <unistd.h>
 #include <time.h>
+#include <fcntl.h>  // For open() and O_RDONLY
+#include <unistd.h> // For lseek() and close()
 
 #include "epg.h"
 #include "rtp2httpd.h"
@@ -158,10 +160,30 @@ int epg_set_url(const char *url)
     return 0;
 }
 
+// int epg_fetch_sync(void)
+// {
+//     int new_fd;
+//     size_t new_size;
+
+//     /* Check if URL is set */
+//     if (!epg_cache.url)
+//     {
+//         logger(LOG_ERROR, "Cannot fetch EPG: URL not set");
+//         return -1;
+//     }
+
+//     logger(LOG_INFO, "Fetching EPG from: %s", epg_cache.url);
+
+//     /* Fetch data synchronously using http_fetch_fd_sync (zero-copy) */
+//     new_fd = http_fetch_fd_sync(epg_cache.url, &new_size);
+//     epg_fetch_fd_callback(NULL, new_fd, new_size, NULL);
+//     return 0;
+// }
+
 int epg_fetch_sync(void)
 {
-    int new_fd;
-    size_t new_size;
+    int new_fd = -1;
+    size_t new_size = 0;
 
     /* Check if URL is set */
     if (!epg_cache.url)
@@ -172,9 +194,58 @@ int epg_fetch_sync(void)
 
     logger(LOG_INFO, "Fetching EPG from: %s", epg_cache.url);
 
-    /* Fetch data synchronously using http_fetch_fd_sync (zero-copy) */
-    new_fd = http_fetch_fd_sync(epg_cache.url, &new_size);
+    /* Handle HTTP(S) URLs */
+    if (strncmp(epg_cache.url, "http://", 7) == 0 || strncmp(epg_cache.url, "https://", 8) == 0)
+    {
+        /* Fetch data synchronously using http_fetch_fd_sync (zero-copy) */
+        new_fd = http_fetch_fd_sync(epg_cache.url, &new_size);
+    }
+    /* Handle file:// URLs */
+    else if (strncmp(epg_cache.url, "file://", 7) == 0)
+    {
+        const char *path = epg_cache.url + 7; /* Skip "file://" prefix */
+        long file_size;
+
+        /* Open the local file to get a file descriptor */
+        new_fd = open(path, O_RDONLY);
+        if (new_fd < 0)
+        {
+            logger(LOG_ERROR, "Failed to open EPG file: %s", path);
+            return -1;
+        }
+
+        /* Get file size */
+        file_size = lseek(new_fd, 0, SEEK_END);
+        lseek(new_fd, 0, SEEK_SET); /* Reset file offset to the beginning */
+
+        if (file_size < 0)
+        {
+            logger(LOG_ERROR, "Invalid EPG file: %s (size: %ld)", path, file_size);
+            close(new_fd);
+            return -1;
+        }
+
+        new_size = (size_t)file_size;
+        logger(LOG_DEBUG, "Successfully opened EPG file (fd=%d): %zu bytes", new_fd, new_size);
+    }
+    /* Handle unsupported schemes */
+    else
+    {
+        logger(LOG_ERROR, "Unsupported EPG URL scheme: %s", epg_cache.url);
+        return -1;
+    }
+
+    /* Check if a valid file descriptor was obtained */
+    if (new_fd < 0)
+    {
+        /* Error should have been logged in the specific handler */
+        logger(LOG_ERROR, "Failed to get a valid file descriptor for EPG");
+        return -1;
+    }
+
+    /* Pass the obtained file descriptor and size to the callback for processing */
     epg_fetch_fd_callback(NULL, new_fd, new_size, NULL);
+
     return 0;
 }
 
