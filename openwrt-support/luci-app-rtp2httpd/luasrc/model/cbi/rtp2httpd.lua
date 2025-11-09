@@ -102,7 +102,7 @@ o.default = "10"
 
 o = s:option(Value, "buffer_pool_max_size", translate("Max pool buffer"))
 o.datatype = "uinteger"
-o.default = "16384"
+o.default = "65536"
 o.description = translate("Maximum number of buffers in zero-copy pool. Default is 16384 (~24MB). Not recommended when running behind reverse proxies.")
 
 o = s:option(Value, "external_m3u", translate("External M3U URL"))
