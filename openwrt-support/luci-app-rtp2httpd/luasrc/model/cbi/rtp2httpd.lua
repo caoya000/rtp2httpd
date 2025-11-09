@@ -110,7 +110,7 @@ o.default = "file:///mnt/mmcblk0p7/rtp2httpd/tv.m3u"
 
 o = s:option(Value, "external_m3u_update_interval", translate("External M3U update interval"))
 o.datatype = "uinteger"
-o.default = "86400"
-o.description = translate("External M3U automatic update interval in seconds (default: 86400 = 24 hours). Set to 0 to disable automatic updates.")
+o.default = "7200"
+o.description = translate("External M3U automatic update interval in seconds (default: 7200 = 2 hours). Set to 0 to disable automatic updates.")
 
 return m
