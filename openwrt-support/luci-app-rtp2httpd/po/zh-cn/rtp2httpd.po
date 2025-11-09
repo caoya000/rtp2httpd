@@ -23,7 +23,7 @@ msgstr "程序崩溃后自动重启"
 msgid "Port"
 msgstr "端口"
 
-msgid "Upstream Interface"
+msgid "Source interface"
 msgstr "上游接口"
 
 msgid "Default interface for all upstream traffic (multicast, FCC and RTSP)."
