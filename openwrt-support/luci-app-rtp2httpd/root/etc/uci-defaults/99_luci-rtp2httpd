@@ -1,0 +1,12 @@
+#!/bin/sh
+
+# needed for "Save and Apply" to restart rtp2httpd
+uci -q batch <<-EOF >/dev/null
+	delete ucitrack.@rtp2httpd[-1]
+	add ucitrack rtp2httpd
+	set ucitrack.@rtp2httpd[-1].init=rtp2httpd
+	commit ucitrack
+EOF
+
+rm -f /tmp/luci-indexcache
+exit 0

@@ -1,0 +1,84 @@
+
+msgid "NOT RUNNING"
+msgstr "未运行"
+
+msgid "RUNNING"
+msgstr "运行中"
+
+msgid "Rtp2httpd"
+msgstr "Rtp2httpd"
+
+msgid "rtp2httpd converts RTP/UDP/RTSP media into http stream."
+msgstr "rtp2httpd 用于将 RTP/UDP/RTSP 媒体流转换为 HTTP 流。"
+
+msgid "Add instance"
+msgstr "添加实例"
+
+msgid "Enable"
+msgstr "启用"
+
+msgid "Auto restart after crash"
+msgstr "程序崩溃后自动重启"
+
+msgid "Port"
+msgstr "端口"
+
+msgid "Upstream Interface"
+msgstr "上游接口"
+
+msgid "Default interface for all upstream traffic (multicast, FCC and RTSP)."
+msgstr "所有上游流量（组播、FCC 和 RTSP）使用的默认接口。"
+
+msgid "Respawn"
+msgstr "自动重启"
+
+msgid "Workers"
+msgstr "工作进程数"
+
+msgid "Number of worker processes. Set to 1 for resource-constrained devices, or CPU cores for best performance."
+msgstr "工作进程数量。资源紧凑设备建议设置为 1，最佳吞吐量可以设置为 CPU 核心数。"
+
+msgid "Use Config File"
+msgstr "使用配置文件"
+
+msgid "Use config file instead of individual options"
+msgstr "使用配置文件而不是单独的选项"
+
+msgid "Max clients allowed"
+msgstr "最大客户端数"
+
+msgid "Max pool buffer"
+msgstr "最大缓冲区数量"
+
+msgid "Maximum number of buffers in zero-copy pool. Default is 16384 (~24MB). Not recommended when running behind reverse proxies."
+msgstr "零拷贝缓冲池的最大缓冲区数量。默认 16384（约24MB）。使用反向代理时不建议开启。"
+
+msgid "External M3U URL"
+msgstr "外部 M3U URL"
+
+msgid "External M3U update interval"
+msgstr "外部 M3U 更新间隔"
+
+msgid "External M3U automatic update interval in seconds (default: 86400 = 24 hours). Set to 0 to disable automatic updates."
+msgstr "外部 M3U 自动更新间隔（秒），默认 86400（24 小时）。设为 0 禁用自动更新。"
+
+msgid "Logging level"
+msgstr "日志级别"
+
+msgid "Enable zero-copy"
+msgstr "启用零拷贝发送"
+
+msgid "Enable zero-copy send with MSG_ZEROCOPY for better performance. Requires kernel 4.14+ (MSG_ZEROCOPY support)."
+msgstr "启用 MSG_ZEROCOPY 零拷贝发送以提升性能。需要内核 4.14+（支持 MSG_ZEROCOPY）。使用反向代理时不建议开启。"
+
+msgid "Status Dashboard"
+msgstr "状态面板"
+
+msgid "Open Status Dashboard"
+msgstr "打开状态面板"
+
+msgid "Player Page"
+msgstr "播放器页面"
+
+msgid "Open Player Page"
+msgstr "打开播放器页面"
