@@ -106,7 +106,7 @@ o.default = "65536"
 o.description = translate("Maximum number of buffers in zero-copy pool. Default is 16384 (~24MB). Not recommended when running behind reverse proxies.")
 
 o = s:option(Value, "external_m3u", translate("External M3U URL"))
-o.default = "file:///mnt/mmcblk0p7/rtp2httpd/tv.m3u"
+o.default = "file:///www/iptv/tv.m3u"
 
 o = s:option(Value, "external_m3u_update_interval", translate("External M3U update interval"))
 o.datatype = "uinteger"
