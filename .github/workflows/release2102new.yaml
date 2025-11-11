@@ -188,7 +188,7 @@ jobs:
           echo 'LUCI_DEPENDS:=+rtp2httpd +luci-compat' >> "$LUCI_MAKEFILE"
           echo '' >> "$LUCI_MAKEFILE"
           echo 'include $(TOPDIR)/feeds/luci/luci.mk' >> "$LUCI_MAKEFILE"
-          echo '' >> "$RT_MAKEFILE"
+          echo '' >> "$LUCI_MAKEFILE"
           echo '$(eval $(call BuildPackage,luci-app-rtp2httpd))' >> "$LUCI_MAKEFILE"
 
           sed -i "s/1\.0\.0/$RELEASE_VERSION/g" openwrt-support/rtp2httpd/src/configure.ac
