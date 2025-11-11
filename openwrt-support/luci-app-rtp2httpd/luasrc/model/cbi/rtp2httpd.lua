@@ -100,17 +100,27 @@ o = s:option(Value, "maxclients", translate("Max clients allowed"))
 o.datatype = "uinteger"
 o.default = "10"
 
-o = s:option(Value, "buffer_pool_max_size", translate("Max pool buffer"))
+o = s:option(Value, "buffer_pool_max_size", translate("Buffer Pool Max Size"))
 o.datatype = "uinteger"
 o.default = "65536"
 o.description = translate("Maximum number of buffers in zero-copy pool. Default is 16384 (~24MB). Not recommended when running behind reverse proxies.")
 
 o = s:option(Value, "external_m3u", translate("External M3U URL"))
 o.default = "file:///www/iptv/tv.m3u"
+o.description = translate("Fetch M3U playlist from a URL (file://, http://, https:// supported)")
 
 o = s:option(Value, "external_m3u_update_interval", translate("External M3U update interval"))
 o.datatype = "uinteger"
 o.default = "86400"
 o.description = translate("External M3U automatic update interval in seconds (default: 7200 = 2 hours). Set to 0 to disable automatic updates.")
+
+o = s:option(Value, "mcast_rejoin_interval", translate("Multicast Rejoin Interval"))
+o.datatype = "uinteger"
+o.default = "0"
+o.description = translate("Multicast rejoin interval in seconds (default 0, disabled). Set to a positive value (e.g., 60) to periodically rejoin multicast groups. Recommended value: 30-120 seconds (less than typical switch timeout of 260s). Only enable if you experience multicast stream interruptions.")
+
+o = s:option(Value, "fcc_listen_port_range", translate("FCC Listen Port Range"))
+o.default = "40000-40100"
+o.description = translate("Local UDP port range for FCC client sockets (format: start-end, e.g., 40000-40100). Leave empty to use random ports.")
 
 return m
