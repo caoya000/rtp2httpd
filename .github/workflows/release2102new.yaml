@@ -175,7 +175,7 @@ jobs:
           echo '' >> "$RT_MAKEFILE"
           echo '$(eval $(call BuildPackage,rtp2httpd))' >> "$RT_MAKEFILE"
 
-          echo "Generating final luci-app-rtp2httpd/Makefile..."
+          echo "Generating luci-app-rtp2httpd/Makefile with version ${PKG_VERSION}"
           rm -f "$LUCI_MAKEFILE"
           echo 'include $(TOPDIR)/rules.mk' >> "$LUCI_MAKEFILE"
           echo '' >> "$LUCI_MAKEFILE"
@@ -188,8 +188,6 @@ jobs:
           echo 'LUCI_DEPENDS:=+rtp2httpd +luci-compat' >> "$LUCI_MAKEFILE"
           echo '' >> "$LUCI_MAKEFILE"
           echo 'include $(TOPDIR)/feeds/luci/luci.mk' >> "$LUCI_MAKEFILE"
-          echo '' >> "$LUCI_MAKEFILE"
-          echo 'endef' >> "$LUCI_MAKEFILE"
 
           sed -i "s/1\.0\.0/$RELEASE_VERSION/g" openwrt-support/rtp2httpd/src/configure.ac
       - name: Create and prepare artifacts directory
