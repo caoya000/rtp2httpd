@@ -127,6 +127,8 @@ jobs:
           RELEASE_VERSION="${RELEASE_TAG#v}"
           PKG_VERSION=$(echo "$RELEASE_VERSION" | sed 's/-/~/g')
           RT_MAKEFILE="openwrt-support/rtp2httpd/Makefile"
+          LUCI_MAKEFILE="openwrt-support/luci-app-rtp2httpd/Makefile"
+
           echo "Generating rtp2httpd/Makefile with version ${PKG_VERSION}"
           rm -f "$RT_MAKEFILE"
           echo 'include $(TOPDIR)/rules.mk' >> "$RT_MAKEFILE"
@@ -172,6 +174,23 @@ jobs:
           echo 'endef' >> "$RT_MAKEFILE"
           echo '' >> "$RT_MAKEFILE"
           echo '$(eval $(call BuildPackage,rtp2httpd))' >> "$RT_MAKEFILE"
+
+          echo "Generating final luci-app-rtp2httpd/Makefile..."
+          rm -f "$LUCI_MAKEFILE"
+          echo 'include $(TOPDIR)/rules.mk' >> "$LUCI_MAKEFILE"
+          echo '' >> "$LUCI_MAKEFILE"
+          echo 'PKG_NAME:=luci-app-rtp2httpd' >> "$LUCI_MAKEFILE"
+          echo "PKG_VERSION:=${PKG_VERSION}" >> "$LUCI_MAKEFILE"
+          echo 'PKG_RELEASE:=1' >> "$LUCI_MAKEFILE"
+          echo '' >> "$LUCI_MAKEFILE"
+          echo 'LUCI_TITLE:=LuCI Support for rtp2httpd' >> "$LUCI_MAKEFILE"
+          echo 'LUCI_PKGARCH:=all' >> "$LUCI_MAKEFILE"
+          echo 'LUCI_DEPENDS:=+rtp2httpd +luci-compat' >> "$LUCI_MAKEFILE"
+          echo '' >> "$LUCI_MAKEFILE"
+          echo 'include $(TOPDIR)/feeds/luci/luci.mk' >> "$LUCI_MAKEFILE"
+          echo '' >> "$LUCI_MAKEFILE"
+          echo 'endef' >> "$LUCI_MAKEFILE"
+
           sed -i "s/1\.0\.0/$RELEASE_VERSION/g" openwrt-support/rtp2httpd/src/configure.ac
       - name: Create and prepare artifacts directory
         run: |
