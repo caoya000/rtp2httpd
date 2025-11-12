@@ -6,6 +6,7 @@ require "luci.model.uci".cursor()
 
 local uci = require "luci.model.uci".cursor()
 local http = require "luci.http"
+local dispatcher = require "luci.dispatcher"
 local port = uci:get("rtp2httpd", "@rtp2httpd[0]", "port") or "5140"
 local status_page_path = uci:get("rtp2httpd", "@rtp2httpd[0]", "status_page_path") or "/status"
 local player_page_path = uci:get("rtp2httpd", "@rtp2httpd[0]", "player_page_path") or "/player"
@@ -14,6 +15,14 @@ local button_staus_url = string.format("http://%s:%s%s", router_ip, port, status
 local button_player_url = string.format("http://%s:%s%s", router_ip, port, player_page_path)
 local button_staus_text = translate("Open Status Dashboard")
 local button_player_text = translate("Open Player Page")
+local s_log_title      = translate("Log")
+local s_view_log       = translate("View Log")
+local s_refresh        = translate("Refresh")
+local s_close          = translate("Close")
+local s_viewer_title   = translate("rtp2httpd Log Viewer")
+local s_loading_msg    = translate("Loading...")
+local s_load_failed_msg = translate("Failed to load log data. Please check if the service is running.")
+local s_no_entries_msg = translate("No rtp2httpd log entries found.")
 
 m = Map("rtp2httpd")
 m.title = translate("Rtp2httpd")
@@ -54,6 +63,91 @@ o.value = string.format(
     button_player_text
 )
 o.rawhtml = true
+
+o = s:option(DummyValue, "log_page_dummy", s_log_title)
+local log_url = dispatcher.build_url("admin", "services", "rtp2httpd", "realtime_log")
+o.rawhtml = true
+o.value = string.format([[
+    <!-- 1. 触发按钮 -->
+    <input type="button" class="cbi-button cbi-button-action" value="%s" onclick="showRtpLogPopup('%s')" />
+
+    <!-- 2. 悬浮窗的HTML结构 (默认隐藏) -->
+    <div id="rtp2httpd-log-modal" class="rtp2httpd-modal-overlay">
+        <div class="rtp2httpd-modal-content">
+            <span class="rtp2httpd-modal-close" onclick="hideRtpLogPopup()">&times;</span>
+            <h3>%s</h3>
+            <textarea id="rtp2httpd-log-view" class="cbi-input-textarea" style="width: 100%%; min-height: 400px;" readonly="readonly"></textarea>
+            <div style="text-align: right; padding-top: 10px;">
+                <input type="button" class="cbi-button cbi-button-apply" value="%s" onclick="showRtpLogPopup('%s')" />
+                <input type="button" class="cbi-button cbi-button-reset" value="%s" onclick="hideRtpLogPopup()" />
+            </div>
+        </div>
+    </div>
+
+    <!-- 3. 悬浮窗的CSS样式 -->
+    <style>
+        .rtp2httpd-modal-overlay {
+            display: none; position: fixed; z-index: 1000;
+            left: 0; top: 0; width: 100%%; height: 100%%;
+            overflow: auto; background-color: rgba(0,0,0,0.5);
+        }
+        .rtp2httpd-modal-content {
+            background-color: #fefefe; margin: 10%% auto; padding: 20px;
+            border: 1px solid #888; width: 80%%; max-width: 900px;
+            border-radius: 5px; position: relative;
+        }
+        .rtp2httpd-modal-close {
+            color: #aaa; position: absolute; top: 5px; right: 15px;
+            font-size: 28px; font-weight: bold; cursor: pointer;
+        }
+        .rtp2httpd-modal-close:hover,
+        .rtp2httpd-modal-close:focus { color: black; }
+    </style>
+
+    <!-- 4. 控制逻辑的JavaScript -->
+    <script type="text/javascript">
+        var modal = document.getElementById('rtp2httpd-log-modal');
+        var logView = document.getElementById('rtp2httpd-log-view');
+
+        // 显示悬浮窗并加载日志
+        function showRtpLogPopup(url) {
+            logView.value = '%s';
+            modal.style.display = 'block';
+
+            // 使用LuCI内置的XHR.get发起一次性请求
+            XHR.get(url, null, function(x, data) {
+                if (!x || !data) {
+                    logView.value = '%s';
+                    return;
+                }
+                
+                logView.value = data.log || '%s';
+                // 滚动到文本框底部
+                logView.scrollTop = logView.scrollHeight;
+            });
+        }
+
+        // 隐藏悬浮窗
+        function hideRtpLogPopup() {
+            modal.style.display = 'none';
+        }
+
+        // 点击悬浮窗外部区域时关闭它
+        window.addEventListener('click', function(event) {
+            if (event.target == modal) {
+                hideRtpLogPopup();
+            }
+        });
+    </script>
+]],
+    s_view_log, log_url,
+    s_viewer_title,
+    s_refresh, log_url,
+    s_close,
+    s_loading_msg:gsub("'", "\\'"),
+    s_load_failed_msg:gsub("'", "\\'"),
+    s_no_entries_msg:gsub("'", "\\'")
+)
 
 o = s:option(Flag, "use_config_file", translate("Use Config File"))
 o.enabled = "1"

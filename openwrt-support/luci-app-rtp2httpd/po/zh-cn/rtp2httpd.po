@@ -97,3 +97,27 @@ msgstr "FCC 客户端套接字使用的本地 UDP 端口范围（格式：起始
 
 msgid "Fetch M3U playlist from a URL (file://, http://, https:// supported)"
 msgstr "从URL获取M3U播放列表（支持file://、http://、https://协议）"
+
+msgid "Log"
+msgstr "日志"
+
+msgid "View Log"
+msgstr "查看日志"
+
+msgid "Refresh"
+msgstr "刷新"
+
+msgid "Close"
+msgstr "关闭"
+
+msgid "rtp2httpd Log Viewer"
+msgstr "rtp2httpd 日志查看器"
+
+msgid "Loading..."
+msgstr "加载中..."
+
+msgid "Failed to load log data. Please check if the service is running."
+msgstr "日志数据加载失败。请检查服务是否正在运行。"
+
+msgid "No rtp2httpd log entries found."
+msgstr "未找到rtp2httpd日志。"
