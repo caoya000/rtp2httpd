@@ -1,9 +1,14 @@
 #!/bin/sh /etc/rc.common
 
+#
+# rtp2httpd init script
+#
+
 START=99
 USE_PROCD=1
 CRON_FILE=/etc/crontabs/root
 
+# Helper function to append command-line arguments for procd
 append_arg() {
   local cfg="$1"
   local var="$2"
@@ -15,19 +20,19 @@ append_arg() {
   [ -n "$val" -o -n "$def" ] && procd_append_param command $opt "${val:-$def}"
 }
 
+# This function is called for each service instance defined in the config file.
 start_instance() {
   local cfg="$1"
   local aux
   local use_config_file
 
-  # 检查 'disabled' 标志。如果设置为 '1' (默认值), 则清理 cron 任务并退出
+  # Check if the instance is disabled. Default is '1' (disabled) for safety.
+  # If an instance is disabled, we do not start it. The global cron job
+  # is managed by start_service() and stop_service().
   config_get_bool aux "$cfg" 'disabled' '1'
   if [ "$aux" = 1 ]; then
-    # 从 cron 文件中移除所有与 rtp2httpd 相关的行
-    sed -i '/rtp2httpd/d' $CRON_FILE
-    # 重启 cron 服务以应用更改
-    /etc/init.d/cron restart >/dev/null 2>&1
-    # 正确处理返回值：返回 1, 表示此实例未启动, 停止后续处理
+    # This instance is disabled, so we do nothing and return.
+    # The cron cleanup is handled globally in stop_service.
     return 1
   fi
 
@@ -95,16 +100,42 @@ start_instance() {
   procd_close_instance
 }
 
-service_triggers() {
-  procd_add_reload_trigger "rtp2httpd"
-}
-
+# This function is called when the service is started or restarted.
 start_service() {
+  # Load the rtp2httpd configuration file
   config_load rtp2httpd
+  
+  # Iterate over each 'rtp2httpd' section in the config and call start_instance
   config_foreach start_instance rtp2httpd
 
+  # After attempting to start all instances, set up the cron job.
+  # This is a "set" operation: remove any old entry, then add the new one.
+  # This ensures there is only one entry.
   sed -i '/rtp2httpd/d' $CRON_FILE
   echo "15 6 * * * /etc/init.d/rtp2httpd restart" >> $CRON_FILE
+  # Apply the new crontab and restart cron
   crontab $CRON_FILE
-  /etc/init.d/cron restart
+  /etc/init.d/cron restart >/dev/null 2>&1
+}
+
+# This function is called when the service is stopped.
+# It is CRITICAL for proper cleanup.
+stop_service() {
+  # When the service is stopped, remove its cron job.
+  sed -i '/rtp2httpd/d' $CRON_FILE
+  # Apply the change and restart cron.
+  # The output is redirected to /dev/null to prevent the "crond started" log message.
+  /etc/init.d/cron restart >/dev/null 2>&1
+}
+
+# This function is called when the service is reloaded.
+# A simple restart is often the easiest way to handle reload for many services.
+reload_service() {
+  stop
+  start
+}
+
+# This function sets up triggers for procd to auto-reload the service.
+service_triggers() {
+  procd_add_reload_trigger "rtp2httpd"
 }
