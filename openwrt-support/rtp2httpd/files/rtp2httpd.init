@@ -100,8 +100,3 @@ start_service() {
   crontab $CRON_FILE
   /etc/init.d/cron restart
 }
-
-stop_service() {
-    sed -i '/rtp2httpd/d' $CRON_FILE
-    /etc/init.d/cron restart
-}
