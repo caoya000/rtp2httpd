@@ -19,17 +19,47 @@ local s_log_title      = translate("Log")
 local s_view_log       = translate("View Log")
 local s_refresh        = translate("Refresh")
 local s_close          = translate("Close")
-local s_viewer_title   = translate("rtp2httpd Log Viewer")
+local s_viewer_title   = translate("Log Viewer")
 local s_loading_msg    = translate("Loading...")
 local s_load_failed_msg = translate("Failed to load log data. Please check if the service is running.")
 local s_no_entries_msg = translate("No rtp2httpd log entries found.")
+local s_collecting_data = translate("Collecting data...")
+local s_running         = translate("RUNNING")
+local s_not_running     = translate("NOT RUNNING")
+
 
 m = Map("rtp2httpd")
 m.title = translate("Rtp2httpd")
 m.description = translate("rtp2httpd converts RTP/UDP/RTSP media into http stream.")
 
-m:section(SimpleSection).template  = "rtp2httpd/rtp2httpd_status"
+-- Section for live status display
+s = m:section(SimpleSection)
+s.anonymous = true
 
+o = s:option(DummyValue, "_status")
+o.rawhtml = true
+local status_url = dispatcher.build_url("admin", "services", "rtp2httpd", "status")
+o.value = string.format([[
+	<p id="rtp2httpd_status"><em>%s</em></p>
+	<script type="text/javascript">
+		XHR.poll(3, '%s', null,
+			function(x, data) {
+				var tb = document.getElementById('rtp2httpd_status');
+				if (data && tb) {
+					var status_text = '';
+					if (data.running) {
+						status_text = '<b><font color="green">rtp2httpd - %s</font></b>';
+					} else {
+						status_text = '<b><font color="red">rtp2httpd - %s</font></b>';
+					}
+					tb.innerHTML = status_text;
+				}
+			}
+		);
+	</script>
+]], s_collecting_data, status_url, s_running, s_not_running)
+
+-- Main configuration section
 s = m:section(TypedSection, "rtp2httpd")
 s.addremove = true
 s.anonymous = false

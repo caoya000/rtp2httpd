@@ -110,8 +110,8 @@ msgstr "刷新"
 msgid "Close"
 msgstr "关闭"
 
-msgid "rtp2httpd Log Viewer"
-msgstr "rtp2httpd 日志查看器"
+msgid "Log Viewer"
+msgstr "日志查看器"
 
 msgid "Loading..."
 msgstr "加载中..."
@@ -121,3 +121,6 @@ msgstr "日志数据加载失败。请检查服务是否正在运行。"
 
 msgid "No rtp2httpd log entries found."
 msgstr "未找到rtp2httpd日志。"
+
+msgid "Collecting data..."
+msgstr "正在收集数据..."

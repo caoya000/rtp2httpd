@@ -24,7 +24,7 @@ end
 
 function get_log()
     local util = require "luci.util"
-    local log_output = util.trim(util.exec("logread | grep rtp"))
+    local log_output = util.trim(util.exec("logread | grep rtp2httpd"))
 	luci.http.prepare_content("application/json")
 	luci.http.write_json({ log = log_output })
 end
