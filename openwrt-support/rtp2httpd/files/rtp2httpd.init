@@ -20,8 +20,16 @@ start_instance() {
   local aux
   local use_config_file
 
-  config_get_bool aux "$cfg" 'disabled' '0'
-  [ "$aux" = 1 ] && return 1
+  # 检查 'disabled' 标志。如果设置为 '1' (默认值), 则清理 cron 任务并退出
+  config_get_bool aux "$cfg" 'disabled' '1'
+  if [ "$aux" = 1 ]; then
+    # 从 cron 文件中移除所有与 rtp2httpd 相关的行
+    sed -i '/rtp2httpd/d' $CRON_FILE
+    # 重启 cron 服务以应用更改
+    /etc/init.d/cron restart >/dev/null 2>&1
+    # 正确处理返回值：返回 1, 表示此实例未启动, 停止后续处理
+    return 1
+  fi
 
   config_get_bool use_config_file "$cfg" 'use_config_file' '0'
 
