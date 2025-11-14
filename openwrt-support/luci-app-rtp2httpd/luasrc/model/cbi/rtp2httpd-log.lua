@@ -4,7 +4,6 @@ local i18n = require "luci.i18n"
 -- 获取后端的日志API URL
 local log_url = dispatcher.build_url("admin", "services", "rtp2httpd", "realtime_log")
 
--- 翻译文本
 local s_refresh = i18n.translate("Refresh")
 local s_loading_msg = i18n.translate("Loading...")
 local s_load_failed_msg = i18n.translate("Failed to load log data. Please check if the service is running.")

@@ -85,8 +85,6 @@ o.value = string.format(
 )
 o.rawhtml = true
 
--- 此处已删除原有的日志按钮和弹窗代码
-
 o = s:option(Flag, "use_config_file", translate("Use Config File"))
 o.enabled = "1"
 o.disabled = "0"
