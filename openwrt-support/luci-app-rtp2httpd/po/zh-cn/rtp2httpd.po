@@ -126,7 +126,7 @@ msgid "Collecting data..."
 msgstr "正在收集数据..."
 
 msgid "Direct editor for the configuration file located at /etc/rtp2httpd.conf."
-msgstr "直接编辑位于 /etc/rtp2httpd.conf 的配置文件。"
+msgstr "编辑位于 /etc/rtp2httpd.conf 的配置文件。"
 
 msgid "Note: The configuration file does not currently exist. It will be created upon saving."
 msgstr "注意：未发现配置文件。保存时将自动创建。"
