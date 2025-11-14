@@ -1,4 +1,3 @@
-
 module("luci.controller.rtp2httpd", package.seeall)
 
 function index()
@@ -6,10 +5,24 @@ function index()
 		return
 	end
 	
-	entry({"admin", "services", "rtp2httpd"}, cbi("rtp2httpd"), _("Rtp2httpd"), 60).dependent = true
+	-- 主入口，默认指向“Settings”标签页
+	entry({"admin", "services", "rtp2httpd"}, alias("admin", "services", "rtp2httpd", "settings"), _("Rtp2httpd"), 60).dependent = true
+
+	-- “Settings”标签页 (序号 1)
+	entry({"admin", "services", "rtp2httpd", "settings"}, cbi("rtp2httpd"), _("Settings"), 1).leaf = true
+	
+	-- “Log”标签页 (序号 2)
+	entry({"admin", "services", "rtp2httpd", "log"}, cbi("rtp2httpd-log"), _("Log"), 2).leaf = true
+
+	-- 新增: “Config File”标签页 (序号 3)
+	entry({"admin", "services", "rtp2httpd", "config"}, cbi("rtp2httpd-config"), _("Config File"), 3).leaf = true
+
+	-- 后端API接口，保持不变
 	entry({"admin", "services", "rtp2httpd", "status"}, call("act_status")).leaf = true
 	entry({'admin', 'services', 'rtp2httpd', 'realtime_log'}, call('get_log')).json = true
 end
+
+-- 以下所有函数保持不变
 
 local function is_running()
 	return luci.sys.call("pidof rtp2httpd >/dev/null") == 0
