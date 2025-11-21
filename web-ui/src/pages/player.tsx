@@ -1,11 +1,14 @@
 import { StrictMode, useEffect, useState, useCallback, useMemo, useRef, Activity } from "react";
 import { createRoot } from "react-dom/client";
-import mpegts from "mpegts.js";
+import mpegts from "@rtp2httpd/mpegts.js";
 import { Channel, M3UMetadata, PlayMode } from "../types/player";
 import { parseM3U, buildCatchupSegments, normalizeUrl } from "../lib/m3u-parser";
-import { loadEPG, getCurrentProgram, getEPGChannelId, EPGData } from "../lib/epg-parser";
-import { ChannelList, ChannelListRef } from "../components/player/channel-list";
-import { EPGView } from "../components/player/epg-view";
+import { loadEPG, getCurrentProgram, getEPGChannelId, EPGData, fillEPGGaps } from "../lib/epg-parser";
+import {
+  ChannelList,
+  nextScrollBehaviorRef as channelListNextScrollBehaviorRef,
+} from "../components/player/channel-list";
+import { EPGView, nextScrollBehaviorRef as epgViewNextScrollBehaviorRef } from "../components/player/epg-view";
 import { VideoPlayer } from "../components/player/video-player";
 import { SettingsDropdown } from "../components/player/settings-dropdown";
 import { Card } from "../components/ui/card";
@@ -44,7 +47,6 @@ function PlayerPage() {
   const [catchupTailOffset, setCatchupTailOffset] = useState(() => getCatchupTailOffset());
   const [force16x9, setForce16x9] = useState(() => getForce16x9());
   const pageContainerRef = useRef<HTMLDivElement>(null);
-  const channelListRef = useRef<ChannelListRef>(null);
 
   // Track stream start time - the absolute time position when current stream started
   // For live mode: null (no seeking)
@@ -91,7 +93,7 @@ function PlayerPage() {
 
     const now = new Date();
 
-    if (streamStartTime.getTime() > now.getTime() - 1000) {
+    if (streamStartTime.getTime() > now.getTime() - 3000) {
       setPlaybackSegments([
         {
           url: currentChannel.url,
@@ -143,21 +145,32 @@ function PlayerPage() {
     }
   }, [currentChannel, playMode]);
 
-  const handlePrevChannel = useCallback(() => {
-    if (!metadata || !currentChannel) return;
-    const currentIndex = metadata.channels.findIndex((ch) => ch === currentChannel);
-    // Wrap around to last channel if at first channel
-    const prevIndex = currentIndex > 0 ? currentIndex - 1 : metadata.channels.length - 1;
-    selectChannel(metadata.channels[prevIndex]);
-  }, [metadata, currentChannel, selectChannel]);
+  const handleChannelNavigate = useCallback(
+    (target: "prev" | "next" | number) => {
+      if (!metadata || !metadata.channels.length) return;
 
-  const handleNextChannel = useCallback(() => {
-    if (!metadata || !currentChannel) return;
-    const currentIndex = metadata.channels.findIndex((ch) => ch === currentChannel);
-    // Wrap around to first channel if at last channel
-    const nextIndex = currentIndex < metadata.channels.length - 1 ? currentIndex + 1 : 0;
-    selectChannel(metadata.channels[nextIndex]);
-  }, [metadata, currentChannel, selectChannel]);
+      if (target === "prev" || target === "next") {
+        if (!currentChannel) return;
+        const currentIndex = metadata.channels.findIndex((ch) => ch === currentChannel);
+        let nextIndex = 0;
+
+        if (target === "prev") {
+          // Wrap around to last channel if at first channel
+          nextIndex = currentIndex > 0 ? currentIndex - 1 : metadata.channels.length - 1;
+        } else {
+          // Wrap around to first channel if at last channel
+          nextIndex = currentIndex < metadata.channels.length - 1 ? currentIndex + 1 : 0;
+        }
+        selectChannel(metadata.channels[nextIndex]);
+      } else {
+        const channel = metadata.channels[target - 1];
+        if (channel) {
+          selectChannel(channel);
+        }
+      }
+    },
+    [metadata, currentChannel, selectChannel],
+  );
 
   const loadPlaylist = useCallback(async () => {
     try {
@@ -211,11 +224,20 @@ function PlayerPage() {
         // Load EPG and filter to only channels in M3U
         loadEPG(epgUrl, validChannelIds)
           .then((epg) => {
-            setEpgData(epg);
+            // Fill gaps in EPG data with 2-hour fallback programs for catchup-capable channels
+            const filledEpg = fillEPGGaps(epg, parsed.channels);
+            setEpgData(filledEpg);
           })
           .catch((err) => {
             console.error("Failed to load EPG:", err);
+            // Even if EPG loading fails, generate fallback programs for catchup-capable channels
+            const fallbackEpg = fillEPGGaps({}, parsed.channels);
+            setEpgData(fallbackEpg);
           });
+      } else {
+        // No EPG URL provided, generate fallback programs for catchup-capable channels
+        const fallbackEpg = fillEPGGaps({}, parsed.channels);
+        setEpgData(fallbackEpg);
       }
 
       // Try to restore last played channel, otherwise select first channel
@@ -274,28 +296,13 @@ function PlayerPage() {
     if (pageContainerRef.current) {
       if (document.fullscreenElement) {
         document.exitFullscreen();
+        setShowSidebar(true);
       } else {
         pageContainerRef.current.requestFullscreen();
+        setShowSidebar(false);
       }
     }
   }, []);
-
-  // Handle search input from keyboard shortcuts
-  const handleSearchInput = useCallback(
-    (text: string) => {
-      // Switch to channels tab if not already there
-      if (sidebarView !== "channels") {
-        setSidebarView("channels");
-      }
-      // Show sidebar if hidden
-      if (!showSidebar) {
-        setShowSidebar(true);
-      }
-      // Append text to search and focus
-      channelListRef.current?.appendSearchQuery(text);
-    },
-    [sidebarView, showSidebar],
-  );
 
   const handleCatchupTailOffsetChange = useCallback((offset: number) => {
     setCatchupTailOffset(offset);
@@ -328,8 +335,7 @@ function PlayerPage() {
             streamStartTime={streamStartTime}
             currentVideoTime={currentVideoTime}
             onCurrentVideoTimeChange={setCurrentVideoTime}
-            onPrevChannel={handlePrevChannel}
-            onNextChannel={handleNextChannel}
+            onChannelNavigate={handleChannelNavigate}
             showSidebar={showSidebar}
             onToggleSidebar={() => {
               const newState = !showSidebar;
@@ -337,18 +343,20 @@ function PlayerPage() {
               saveSidebarVisible(newState);
             }}
             onFullscreenToggle={handleFullscreenToggle}
-            onSearchInput={handleSearchInput}
             force16x9={force16x9}
           />
         </div>
 
         {/* Sidebar - Mobile: always visible (below video, hidden in fullscreen), Desktop: toggle-able side panel (visible in fullscreen) */}
-        {(showSidebar || isMobile) && !(isFullscreen && isMobile) && (
+        <Activity mode={(showSidebar || isMobile) && !(isFullscreen && isMobile) ? "visible" : "hidden"}>
           <div className="flex flex-col w-full md:w-80 md:border-l border-t md:border-t-0 border-border bg-card flex-1 md:flex-initial overflow-hidden">
             {/* Sidebar Tabs */}
             <div className="flex items-center border-b border-border shrink-0">
               <button
-                onClick={() => setSidebarView("channels")}
+                onClick={() => {
+                  channelListNextScrollBehaviorRef.current = "instant";
+                  setSidebarView("channels");
+                }}
                 className={`flex-1 px-3 md:px-4 py-2 md:py-3 text-xs md:text-sm font-medium ${
                   sidebarView === "channels"
                     ? "border-b-2 border-primary text-primary"
@@ -358,7 +366,10 @@ function PlayerPage() {
                 {t("channels")} ({metadata?.channels.length || 0})
               </button>
               <button
-                onClick={() => setSidebarView("epg")}
+                onClick={() => {
+                  epgViewNextScrollBehaviorRef.current = "instant";
+                  setSidebarView("epg");
+                }}
                 className={`flex-1 px-3 md:px-4 py-2 md:py-3 text-xs md:text-sm font-medium ${
                   sidebarView === "epg"
                     ? "border-b-2 border-primary text-primary"
@@ -385,7 +396,6 @@ function PlayerPage() {
             <div className="flex-1 overflow-hidden">
               <Activity mode={sidebarView === "channels" ? "visible" : "hidden"}>
                 <ChannelList
-                  ref={channelListRef}
                   channels={metadata?.channels}
                   groups={metadata?.groups}
                   currentChannel={currentChannel}
@@ -420,7 +430,7 @@ function PlayerPage() {
               </Activity>
             </div>
           </div>
-        )}
+        </Activity>
       </div>
     </div>
   );
