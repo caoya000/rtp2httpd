@@ -4,7 +4,7 @@
 #include "service.h"
 
 /* UDP socket receive buffer size (512KB) */
-#define UDP_RCVBUF_SIZE (512 * 1024)
+#define UDP_RCVBUF_SIZE (2048 * 1024)
 
 /**
  * Bind socket to upstream interface if configured

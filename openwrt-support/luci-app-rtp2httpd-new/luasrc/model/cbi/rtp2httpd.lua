@@ -110,7 +110,7 @@ o:value("1", "ERROR")
 o:value("2", "WARN")
 o:value("3", "INFO")
 o:value("4", "DEBUG")
-o.default = "3"
+o.default = "1"
 
 o = s:option(ListValue, "upstream_interface", translate("Source interface"))
 local upstream_interface = luci.sys.exec("ls -l /sys/class/net/ 2>/dev/null |awk '{print $9}' 2>/dev/null")
