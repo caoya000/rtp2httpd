@@ -97,7 +97,7 @@ o.enabled = "1"
 o.disabled = "0"
 o.default = o.disabled
 o.rmempty = false
-o.description = translate("Enable zero-copy send with MSG_ZEROCOPY for better performance. Requires kernel 4.14+. On supported devices, this can improve throughput and reduce CPU usage, especially under high concurrent load.")
+o.description = translate("Enable zero-copy send with MSG_ZEROCOPY for better performance. Requires kernel 4.14+. On supported devices, this can improve throughput and reduce CPU usage, especially under high concurrent load. Recommended only when experiencing performance bottlenecks.")
 
 o = s:option(Value, "port", translate("Port"))
 o.datatype = "uinteger"
