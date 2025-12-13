@@ -13,7 +13,7 @@
     "format": "prettier --write ."
   },
   "dependencies": {
-    "@rtp2httpd/mpegts.js": "^2.0.0",
+    "@rtp2httpd/mpegts.js": "github:caoya000/mpegts.js#master",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^0.561.0",

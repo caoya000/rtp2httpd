@@ -2,6 +2,9 @@
 
 START=99
 USE_PROCD=1
+CRON_FILE="/etc/crontabs/root"
+EXTRA_COMMANDS="task_hup"
+EXTRA_HELP="        task_hup        Send SIGHUP to all running instances (Reload lists)"
 
 append_arg() {
   local cfg="$1"
@@ -91,7 +94,48 @@ service_triggers() {
   procd_add_reload_trigger "rtp2httpd"
 }
 
+# 运行时动态查找 PID 并发送信号
+task_hup() {
+    local pid_file
+    local pid
+    local found=0
+
+    # 遍历所有可能的 pid 文件
+    for pid_file in /var/run/rtp2httpd_*.pid; do
+        if [ -f "$pid_file" ]; then
+            pid=$(cat "$pid_file")
+            # 检查进程是否真的存在
+            if [ -d "/proc/$pid" ]; then
+                echo "Sending HUP signal to rtp2httpd instance (PID: $pid)..."
+                kill -HUP "$pid"
+                found=1
+            fi
+        fi
+    done
+
+    [ "$found" = 0 ] && echo "No running rtp2httpd instances found."
+}
+
 start_service() {
   config_load rtp2httpd
   config_foreach start_instance rtp2httpd
+
+  # After attempting to start all instances, set up the cron job.
+  [ ! -f "$CRON_FILE" ] && touch "$CRON_FILE"
+  sed -i '/rtp2httpd/d' "$CRON_FILE"
+  echo "15 6 * * * /etc/init.d/rtp2httpd task_hup" >> "$CRON_FILE"
+  /etc/init.d/cron reload >/dev/null 2>&1
+}
+
+stop_service() {
+  # When the service is stopped, remove its cron job.
+  if [ -f "$CRON_FILE" ]; then
+      sed -i '/rtp2httpd/d' "$CRON_FILE"
+      /etc/init.d/cron reload >/dev/null 2>&1
+  fi
+}
+
+reload_service() {
+  stop
+  start
 }
