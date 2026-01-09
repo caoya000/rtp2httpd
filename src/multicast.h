@@ -4,7 +4,7 @@
 #include "service.h"
 
 /*
- * UDP socket receive buffer size (512KB).
+ * UDP socket receive buffer size (3072KB).
  *
  * For 4K IPTV streams at ~50 Mbps, 512KB provides ~80ms of buffering,
  * which helps absorb network jitter and brief processing delays.
@@ -12,7 +12,7 @@
  * during traffic bursts. The actual buffer size may be limited by
  * net.core.rmem_max unless SO_RCVBUFFORCE is used with CAP_NET_ADMIN.
  */
-#define UDP_RCVBUF_SIZE (512 * 1024)
+#define UDP_RCVBUF_SIZE (3072 * 1024)
 
 /**
  * Bind socket to upstream interface if configured
