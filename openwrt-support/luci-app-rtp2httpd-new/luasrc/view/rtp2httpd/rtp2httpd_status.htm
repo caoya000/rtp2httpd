@@ -1,0 +1,28 @@
+<script type="text/javascript">//<![CDATA[
+  XHR.poll(3, '<%=url([[admin]], [[services]], [[rtp2httpd]], [[status]])%>', null,
+    function (x, data) {
+      var tb = document.getElementById('rtp2httpd_status');
+      if (data && tb) {
+        if (data.running) {
+          tb.innerHTML = '<em style=\"color:green\"><b>Rtp2httpd <%:RUNNING%></b></em>';
+        } else {
+          tb.innerHTML = '<em><b><font color=red>Rtp2httpd <%:NOT RUNNING%></font></b></em>';
+        }
+      }
+    }
+  );
+  //]]>
+</script>
+<style>
+  .mar-10 {
+    margin-left: 50px;
+    margin-right: 10px;
+  }
+</style>
+<fieldset class="cbi-section">
+  <p id="rtp2httpd_status">
+    <em>
+      <%:Collecting data...%>
+    </em>
+  </p>
+</fieldset>
