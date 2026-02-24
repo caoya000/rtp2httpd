@@ -1,0 +1,92 @@
+name: Build Frontend
+
+on:
+  # 手动触发时，会提供一个输入框让您填写标签
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'The git tag to build'
+        required: true
+        type: string
+
+  release:
+    types:
+      - published
+
+env:
+  RELEASE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || github.event.inputs.tag }}
+
+jobs:
+  prepare-lockfile:
+    name: Prepare pnpm lockfile
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+
+      - name: Set up Corepack
+        run: corepack enable
+
+      - name: Install dependencies and update lockfile
+        run: pnpm install --no-frozen-lockfile
+        working-directory: web-ui
+
+      - name: Upload pnpm lockfile
+        uses: actions/upload-artifact@v4
+        with:
+          name: pnpm-lockfile
+          path: web-ui/pnpm-lock.yaml
+          if-no-files-found: error
+
+  frontend:
+    name: Build Frontend
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    needs: prepare-lockfile
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Download pnpm lockfile
+        uses: actions/download-artifact@v4
+        with:
+          name: pnpm-lockfile
+          path: web-ui
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+
+      - name: Set up Corepack
+        run: corepack enable
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: web-ui
+
+      - name: Build frontend
+        run: pnpm run build
+        working-directory: web-ui
+
+      - name: Upload page artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-pages
+          path: |
+            src/embedded_web_data.h
+          if-no-files-found: error
