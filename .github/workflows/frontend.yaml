@@ -1,14 +1,12 @@
 name: Build Frontend
 
 on:
-  # 手动触发时，会提供一个输入框让您填写标签
   workflow_dispatch:
     inputs:
       tag:
         description: 'The git tag to build'
         required: true
         type: string
-
   release:
     types:
       - published
@@ -24,28 +22,29 @@ jobs:
       contents: read
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ github.event.release.tag_name }}
+          ref: ${{ env.RELEASE_TAG }}
 
       - name: Set up Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
 
       - name: Set up Corepack
-        run: corepack enable
+        run: |
+          corepack enable
+          corepack prepare pnpm@latest --activate
 
       - name: Install dependencies and update lockfile
         run: pnpm install --no-frozen-lockfile
-        working-directory: web-ui
 
       - name: Upload pnpm lockfile
         uses: actions/upload-artifact@v4
         with:
           name: pnpm-lockfile
-          path: web-ui/pnpm-lock.yaml
+          path: pnpm-lock.yaml
           if-no-files-found: error
 
   frontend:
@@ -56,28 +55,28 @@ jobs:
     needs: prepare-lockfile
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
         with:
-          fetch-depth: 0
-          ref: ${{ github.event.release.tag_name }}
+          ref: ${{ env.RELEASE_TAG }}
 
       - name: Download pnpm lockfile
         uses: actions/download-artifact@v4
         with:
           name: pnpm-lockfile
-          path: web-ui
+          path: .
 
       - name: Set up Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
 
       - name: Set up Corepack
-        run: corepack enable
+        run: |
+          corepack enable
+          corepack prepare pnpm@latest --activate
 
-      - name: Install frontend dependencies
+      - name: Install dependencies
         run: pnpm install --frozen-lockfile
-        working-directory: web-ui
 
       - name: Build frontend
         run: pnpm run build
