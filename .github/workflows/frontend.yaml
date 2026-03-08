@@ -35,7 +35,7 @@ jobs:
       - name: Set up Corepack
         run: |
           corepack enable
-          corepack prepare pnpm@latest --activate
+          corepack prepare pnpm@10.25.0 --activate
 
       - name: Install dependencies and update lockfile
         run: pnpm install --no-frozen-lockfile
@@ -73,14 +73,13 @@ jobs:
       - name: Set up Corepack
         run: |
           corepack enable
-          corepack prepare pnpm@latest --activate
+          corepack prepare pnpm@10.25.0 --activate
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
       - name: Build frontend
-        run: pnpm run build
-        working-directory: web-ui
+        run: pnpm run web-ui:build
 
       - name: Upload page artifacts
         uses: actions/upload-artifact@v4
