@@ -45,9 +45,6 @@ o:value("3","Info")
 o:value("4","Debug")
 o.default = "1"
 
-o = s:taboption("basic", Value, "hostname", i18n.translate("Hostname"),
-    i18n.translate("When configured, HTTP Host header will be checked and must match this value to allow access. M3U conversion will also use this value as the domain for the converted program address. When using reverse proxy, it needs to be configured as the access address after the reverse proxy (including http(s):// and path prefix), for example https://my-domain.com/rtp2httpd, and the reverse proxy needs to pass the Host header."))
-
 --------------------------------------------------------
 -- 获取物理接口
 --------------------------------------------------------
@@ -138,12 +135,6 @@ o.datatype = "range(65536, 16777216)"
 o.placeholder = "3145728"
 o.default = "3145728"
 
-o = s:taboption("network", Flag, "zerocopy_on_send", i18n.translate("Zero-Copy on Send"), i18n.translate("Enable zero-copy send with MSG_ZEROCOPY for better performance. On supported devices, this can improve throughput and reduce CPU usage, especially under high concurrent load. Recommended only when experiencing performance bottlenecks."))
-o.default = "0"
-
-o = s:taboption("network", Value, "rtsp_stun_server", i18n.translate("RTSP STUN Server"), i18n.translate("When RTSP server only supports UDP transport and client is behind NAT, try using STUN for NAT traversal (may not always succeed). Format: host:port or host (default port 3478). Example: stun.miwifi.com"))
-o.placeholder = "stun.miwifi.com"
-
 o = s:taboption("network", Value, "mcast_rejoin_interval", i18n.translate("Multicast Rejoin Interval"), i18n.translate("Periodic multicast rejoin interval in seconds (0=disabled, default 0). Enable this (e.g., 30-120 seconds) if your network switches timeout multicast memberships due to missing IGMP Query messages. Only use when experiencing multicast stream interruptions."))
 o.datatype = "range(0,86400)"
 o.placeholder = "0"
@@ -151,6 +142,12 @@ o.default = "0"
 
 o = s:taboption("network", Value, "fcc_listen_port_range", i18n.translate("FCC Listen Port Range"), i18n.translate("Local UDP port range for FCC client sockets (format: start-end, e.g., 40000-40100). Leave empty to use random ports."))
 o.placeholder = ""
+
+o = s:taboption("network", Flag, "zerocopy_on_send", i18n.translate("Zero-Copy on Send"), i18n.translate("Enable zero-copy send with MSG_ZEROCOPY for better performance. On supported devices, this can improve throughput and reduce CPU usage, especially under high concurrent load. Recommended only when experiencing performance bottlenecks."))
+o.default = "0"
+
+o = s:taboption("network", Value, "rtsp_stun_server", i18n.translate("RTSP STUN Server"), i18n.translate("When RTSP server only supports UDP transport and client is behind NAT, try using STUN for NAT traversal (may not always succeed). Format: host:port or host (default port 3478). Example: stun.miwifi.com"))
+o.placeholder = "stun.miwifi.com"
 
 --------------------------------------------------------
 -- 播放器
@@ -233,6 +230,8 @@ end
 o = s:taboption("advanced", Value, "status_page_path", i18n.translate("Status Page Path"), i18n.translate("URL path for the status page (default: /status)"))
 o.placeholder = "/status"
 o.default = "/status"
+
+o = s:taboption("basic", Value, "hostname", i18n.translate("Hostname"), i18n.translate("When configured, HTTP Host header will be checked and must match this value to allow access."))
 
 o = s:taboption("advanced", Value, "r2h_token", i18n.translate("R2H Token"), i18n.translate("If set, all HTTP requests must include r2h-token query parameter with matching value (e.g., http://server:port/rtp/ip:port?fcc=ip:port&r2h-token=your-token)"))
 o.password = true
