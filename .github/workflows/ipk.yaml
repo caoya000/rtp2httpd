@@ -1,0 +1,147 @@
+name: Build ipk
+
+on:
+  # 手动触发时，会提供一个输入框让您填写标签
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'The git tag to build'
+        required: true
+        type: string
+
+  release:
+    types:
+      - published
+
+env:
+  RELEASE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || github.event.inputs.tag }}
+
+jobs:
+  ipk:
+    name: Package ${{ matrix.arch }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        arch:
+          - aarch64_generic
+        sdk:
+          - immortalwrt/sdk:aarch64_generic-openwrt-21.02.1
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Move src to openwrt-support
+        run: mv openwrt-support ../ && mkdir -p ../openwrt-support/rtp2httpd/src && mv ./* ../openwrt-support/rtp2httpd/src && mv ../openwrt-support ./
+
+      - name: Generate Correct Makefiles
+        run: |
+          RELEASE_TAG="${{ env.RELEASE_TAG }}"
+          RELEASE_VERSION="${RELEASE_TAG#v}"
+          PKG_VERSION=$(echo "$RELEASE_VERSION" | sed 's/-/~/g')
+          RT_MAKEFILE="openwrt-support/rtp2httpd/Makefile"
+          LUCI_MAKEFILE="openwrt-support/luci-app-rtp2httpd-new/Makefile"
+
+          echo "Generating rtp2httpd/Makefile with version ${PKG_VERSION}"
+          rm -f "$RT_MAKEFILE"
+          echo 'include $(TOPDIR)/rules.mk' >> "$RT_MAKEFILE"
+          echo '' >> "$RT_MAKEFILE"
+          echo 'PKG_NAME:=rtp2httpd' >> "$RT_MAKEFILE"
+          echo "PKG_VERSION:=${PKG_VERSION}" >> "$RT_MAKEFILE"
+          echo 'PKG_RELEASE:=1' >> "$RT_MAKEFILE"
+          echo 'PKG_MAINTAINER:=Stackie Jia <jsq2627@gmail.com>' >> "$RT_MAKEFILE"
+          echo '' >> "$RT_MAKEFILE"
+          echo 'PKG_BUILD_DIR:=$(BUILD_DIR)/rtp2httpd-$(PKG_VERSION)' >> "$RT_MAKEFILE"
+          echo 'PKG_FIXUP:=autoreconf' >> "$RT_MAKEFILE"
+          echo '' >> "$RT_MAKEFILE"
+          echo 'include $(INCLUDE_DIR)/package.mk' >> "$RT_MAKEFILE"
+          echo '' >> "$RT_MAKEFILE"
+          echo 'define Package/rtp2httpd' >> "$RT_MAKEFILE"
+          echo -e '\tSECTION:=net' >> "$RT_MAKEFILE"
+          echo -e '\tCATEGORY:=Network' >> "$RT_MAKEFILE"
+          echo -e '\tTITLE:=Convert multicast RTP/UDP IPTV streams into HTTP streams with FCC support' >> "$RT_MAKEFILE"
+          echo -e '\tURL:=https://github.com/stackia/rtp2httpd' >> "$RT_MAKEFILE"
+          echo 'endef' >> "$RT_MAKEFILE"
+          echo '' >> "$RT_MAKEFILE"
+          echo 'define Package/rtp2httpd/description' >> "$RT_MAKEFILE"
+          echo -e '\trtp2httpd converts multicast RTP/UDP media into http stream.' >> "$RT_MAKEFILE"
+          echo -e '\tIt acts as a tiny HTTP server. When client connect,' >> "$RT_MAKEFILE"
+          echo -e '\tpre-configured multicast RTP service is choosen by URL.' >> "$RT_MAKEFILE"
+          echo -e '\tProgram then join pre-configured multicast address and translate' >> "$RT_MAKEFILE"
+          echo -e '\tincoming RTP data to HTTP stream.' >> "$RT_MAKEFILE"
+          echo 'endef' >> "$RT_MAKEFILE"
+          echo '' >> "$RT_MAKEFILE"
+          echo 'CONFIGURE_ARGS += --enable-optimization=-O3' >> "$RT_MAKEFILE"
+          echo '' >> "$RT_MAKEFILE"
+          echo 'define Package/rtp2httpd/conffiles' >> "$RT_MAKEFILE"
+          echo '/etc/config/rtp2httpd' >> "$RT_MAKEFILE"
+          echo 'endef' >> "$RT_MAKEFILE"
+          echo '' >> "$RT_MAKEFILE"
+          echo 'define Package/rtp2httpd/install' >> "$RT_MAKEFILE"
+          echo -e '\t$(INSTALL_DIR) $(1)/etc/init.d $(1)/etc/config' >> "$RT_MAKEFILE"
+          echo -e '\t$(INSTALL_CONF) ./files/rtp2httpd.conf $(1)/etc/config/rtp2httpd' >> "$RT_MAKEFILE"
+          echo -e '\t$(INSTALL_BIN) ./files/rtp2httpd.init $(1)/etc/init.d/rtp2httpd' >> "$RT_MAKEFILE"
+          echo -e '\t$(INSTALL_DIR) $(1)/usr/bin/' >> "$RT_MAKEFILE"
+          echo -e '\t$(INSTALL_BIN) $(PKG_BUILD_DIR)/src/rtp2httpd $(1)/usr/bin' >> "$RT_MAKEFILE"
+          echo -e '\t$(INSTALL_CONF) $(PKG_BUILD_DIR)/rtp2httpd.conf $(1)/etc' >> "$RT_MAKEFILE"
+          echo 'endef' >> "$RT_MAKEFILE"
+          echo '' >> "$RT_MAKEFILE"
+          echo '$(eval $(call BuildPackage,rtp2httpd))' >> "$RT_MAKEFILE"
+
+          echo "Generating luci-app-rtp2httpd-new/Makefile with version ${PKG_VERSION}"
+          rm -f "$LUCI_MAKEFILE"
+          echo 'include $(TOPDIR)/rules.mk' >> "$LUCI_MAKEFILE"
+          echo '' >> "$LUCI_MAKEFILE"
+          echo 'PKG_NAME:=luci-app-rtp2httpd-new' >> "$LUCI_MAKEFILE"
+          echo "PKG_VERSION:=${PKG_VERSION}" >> "$LUCI_MAKEFILE"
+          echo 'PKG_RELEASE:=1' >> "$LUCI_MAKEFILE"
+          echo '' >> "$LUCI_MAKEFILE"
+          echo 'LUCI_TITLE:=LuCI Support for rtp2httpd' >> "$LUCI_MAKEFILE"
+          echo 'LUCI_PKGARCH:=all' >> "$LUCI_MAKEFILE"
+          echo 'LUCI_DEPENDS:=+rtp2httpd +luci-compat' >> "$LUCI_MAKEFILE"
+          echo '' >> "$LUCI_MAKEFILE"
+          echo 'include $(TOPDIR)/feeds/luci/luci.mk' >> "$LUCI_MAKEFILE"
+          echo '' >> "$LUCI_MAKEFILE"
+          echo '$(eval $(call BuildPackage,luci-app-rtp2httpd-new))' >> "$LUCI_MAKEFILE"
+
+          sed -i "s/1\.0\.0/$RELEASE_VERSION/g" openwrt-support/rtp2httpd/src/configure.ac
+      
+      - name: Create and prepare artifacts directory
+        run: |
+          mkdir -p ${{ github.workspace }}/output_artifacts
+          chmod 777 ${{ github.workspace }}/output_artifacts
+      
+      - name: Build packages and copy artifacts
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}:/workspace \
+            -v ${{ github.workspace }}/output_artifacts:/output \
+            ${{ matrix.sdk }} \
+            /bin/bash -c "
+              set -ex
+              echo 'src-link custom /workspace/openwrt-support' >> feeds.conf.default
+              ./scripts/feeds update -a
+              ./scripts/feeds install rtp2httpd
+              ./scripts/feeds install luci-app-rtp2httpd-new
+              make defconfig
+              echo 'CONFIG_PACKAGE_rtp2httpd=m' >> .config
+              echo 'CONFIG_PACKAGE_luci-app-rtp2httpd-new=m' >> .config
+              make defconfig
+              make package/rtp2httpd/compile V=s
+              make package/luci-app-rtp2httpd-new/compile V=s
+              cp -Rp /home/build/immortalwrt/bin/* /output/
+            "
+            
+      - name: List build artifacts for debugging
+        run: ls -Rl output_artifacts
+
+      - name: Upload Packages as Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: packages-${{ matrix.arch }}
+          path: output_artifacts/packages/${{ matrix.arch }}/custom/*.ipk
+          if-no-files-found: error

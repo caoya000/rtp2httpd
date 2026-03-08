@@ -1,3 +1,6 @@
+# 显式允许 openwrt-support 目录下的所有内容
+!openwrt-support/
+
 .vscode/
 
 # clangd
