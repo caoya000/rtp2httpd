@@ -231,7 +231,7 @@ o = s:taboption("advanced", Value, "status_page_path", i18n.translate("Status Pa
 o.placeholder = "/status"
 o.default = "/status"
 
-o = s:taboption("basic", Value, "hostname", i18n.translate("Hostname"), i18n.translate("When configured, HTTP Host header will be checked and must match this value to allow access."))
+o = s:taboption("advanced", Value, "hostname", i18n.translate("Hostname"), i18n.translate("When configured, HTTP Host header will be checked and must match this value to allow access."))
 
 o = s:taboption("advanced", Value, "r2h_token", i18n.translate("R2H Token"), i18n.translate("If set, all HTTP requests must include r2h-token query parameter with matching value (e.g., http://server:port/rtp/ip:port?fcc=ip:port&r2h-token=your-token)"))
 o.password = true
