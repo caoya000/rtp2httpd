@@ -1,10 +1,18 @@
 cmake_minimum_required(VERSION 3.14)
 
 # Extract version from environment or use default
-if(DEFINED ENV{RELEASE_VERSION} AND NOT "$ENV{RELEASE_VERSION}" STREQUAL "")
-  set(PROJECT_VERSION_STRING $ENV{RELEASE_VERSION})
-else()
-  set(PROJECT_VERSION_STRING "1.0.0-snapshot")
+if(NOT PROJECT_VERSION_STRING)
+  if(DEFINED ENV{RELEASE_TAG} AND NOT "$ENV{RELEASE_TAG}" STREQUAL "")
+    set(PROJECT_VERSION_STRING "$ENV{RELEASE_TAG}")
+  elseif(DEFINED RELEASE_TAG AND NOT "${RELEASE_TAG}" STREQUAL "")
+    set(PROJECT_VERSION_STRING "${RELEASE_TAG}")
+  elseif(DEFINED ENV{RELEASE_VERSION} AND NOT "$ENV{RELEASE_VERSION}" STREQUAL "")
+    set(PROJECT_VERSION_STRING "$ENV{RELEASE_VERSION}")
+  elseif(DEFINED RELEASE_VERSION AND NOT "${RELEASE_VERSION}" STREQUAL "")
+    set(PROJECT_VERSION_STRING "${RELEASE_VERSION}")
+  else()
+    set(PROJECT_VERSION_STRING "1.0.0-snapshot")
+  endif()
 endif()
 
 project(rtp2httpd
@@ -163,6 +171,7 @@ install(FILES rtp2httpd.conf
 message(STATUS "")
 message(STATUS "rtp2httpd build configuration:")
 message(STATUS "  Platform:       ${CMAKE_SYSTEM_NAME}")
+message(STATUS "  Version:        ${PROJECT_VERSION_STRING}")
 message(STATUS "  Compiler:       ${CMAKE_C_COMPILER_ID} ${CMAKE_C_COMPILER_VERSION}")
 message(STATUS "  Build type:     ${CMAKE_BUILD_TYPE}")
 message(STATUS "  Aggressive opt: ${ENABLE_AGGRESSIVE_OPT}")

@@ -76,7 +76,7 @@ jobs:
           echo -e '\tincoming RTP data to HTTP stream.' >> "$RT_MAKEFILE"
           echo 'endef' >> "$RT_MAKEFILE"
           echo '' >> "$RT_MAKEFILE"
-          echo 'CMAKE_OPTIONS += -DENABLE_AGGRESSIVE_OPT=ON' >> "$RT_MAKEFILE"
+          echo "CMAKE_OPTIONS += -DENABLE_AGGRESSIVE_OPT=ON -DRELEASE_TAG=${RELEASE_TAG}" >> "$RT_MAKEFILE"
           echo '' >> "$RT_MAKEFILE"
           echo 'define Package/rtp2httpd/conffiles' >> "$RT_MAKEFILE"
           echo '/etc/config/rtp2httpd' >> "$RT_MAKEFILE"

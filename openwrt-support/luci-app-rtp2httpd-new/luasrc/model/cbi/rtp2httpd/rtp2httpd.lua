@@ -237,6 +237,9 @@ o.default = "/status"
 o = s:taboption("advanced", Value, "r2h_token", i18n.translate("R2H Token"), i18n.translate("If set, all HTTP requests must include r2h-token query parameter with matching value (e.g., http://server:port/rtp/ip:port?fcc=ip:port&r2h-token=your-token)"))
 o.password = true
 
+o = s:taboption("advanced", Value, "cors_allow_origin", i18n.translate("CORS Allow Origin"), i18n.translate("Set Access-Control-Allow-Origin header to enable CORS. Use * to allow all origins, or specify a domain (e.g., https://example.com). Leave empty to disable CORS."))
+o.placeholder = "*"
+
 o = s:taboption("advanced", Flag, "xff", "X-Forwarded-For", i18n.translate("When enabled, uses HTTP X-Forwarded-For header as client address for status page display. Also accepts X-Forwarded-Host / X-Forwarded-Proto headers as the base URL for M3U playlist conversion. Only enable when running behind a reverse proxy."))
 o.default = "0"
 

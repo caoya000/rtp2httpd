@@ -210,3 +210,9 @@ msgstr "RTSP STUN 服务器"
 
 msgid "When RTSP server only supports UDP transport and client is behind NAT, try using STUN for NAT traversal (may not always succeed). Format: host:port or host (default port 3478). Example: stun.miwifi.com"
 msgstr "当 RTSP 服务器仅支持 UDP 传输且客户端位于 NAT 后面时，尝试使用 STUN 进行 NAT 穿透（不一定总是成功）。格式：host:port 或 host（默认端口 3478）。例如：stun.miwifi.com"
+
+msgid "CORS Allow Origin"
+msgstr "CORS 允许的源"
+
+msgid "Set Access-Control-Allow-Origin header to enable CORS. Use * to allow all origins, or specify a domain (e.g., https://example.com). Leave empty to disable CORS."
+msgstr "设置 Access-Control-Allow-Origin 响应头以启用 CORS 跨域访问。设为 * 允许所有来源，或指定域名（如 https://example.com）。留空则禁用 CORS。"
