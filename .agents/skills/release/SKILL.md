@@ -104,18 +104,7 @@ Draft bilingual release notes **in a file** (e.g., `/tmp/release-notes-v3.x.y.md
 - ✅ Bilingual: Chinese first, English second (separated by `---`)
 - ❌ Do not include `Closes` / `Fixes #123` — those belong in git history only
 
-Show the drafted notes to the user with a summary of what's changing:
-
-```
-Draft release notes written to /tmp/release-notes-v3.x.y.md.
-
-Release v3.x.y will include:
-- N features (feat:)
-- M bug fixes (fix:)
-- ...
-
-Please review and confirm to proceed.
-```
+Show the drafted notes to the user — output the **full release notes file content** (read it with `cat /tmp/release-notes-v3.x.y.md`) so the user can directly review the complete drafted notes.
 
 ### Step 3: Confirm with User
 
@@ -148,7 +137,13 @@ If there are uncommitted changes preventing a branch switch, advise the user to 
 
 ### Step 5: Build Web UI
 
-Regenerate `src/embedded_web_data.h` so the released binary includes the latest frontend:
+First, install frontend dependencies to avoid stale local caches:
+
+```bash
+pnpm install
+```
+
+Then regenerate `src/embedded_web_data.h` so the released binary includes the latest frontend:
 
 ```bash
 pnpm run web-ui:build
