@@ -43,6 +43,7 @@ interface VideoPlayerProps {
   onToggleSidebar?: () => void;
   onFullscreenToggle?: () => void;
   seamlessSwitch?: boolean;
+  deinterlace?: boolean;
   activeSourceIndex?: number;
   onSourceChange?: (index: number) => void;
   onPlaybackStarted?: () => void;
@@ -145,6 +146,7 @@ export function VideoPlayer({
   onToggleSidebar,
   onFullscreenToggle,
   seamlessSwitch = true,
+  deinterlace = true,
   activeSourceIndex = 0,
   onSourceChange,
   onPlaybackStarted,
@@ -153,6 +155,8 @@ export function VideoPlayer({
 
   const slotAVideoRef = useRef<HTMLVideoElement>(null);
   const slotBVideoRef = useRef<HTMLVideoElement>(null);
+  const slotACanvasRef = useRef<HTMLCanvasElement>(null);
+  const slotBCanvasRef = useRef<HTMLCanvasElement>(null);
   const slotAPlayerRef = useRef<Player | null>(null);
   const slotBPlayerRef = useRef<Player | null>(null);
   const slotLiveStateRef = useRef<Record<SlotId, boolean>>({ a: true, b: true });
@@ -166,7 +170,15 @@ export function VideoPlayer({
   const skipNextSegmentsLoadRef = useRef(false);
 
   const slotVideoRef = (id: SlotId) => (id === "a" ? slotAVideoRef : slotBVideoRef);
+  const slotCanvasRef = (id: SlotId) => (id === "a" ? slotACanvasRef : slotBCanvasRef);
   const slotPlayerRef = (id: SlotId) => (id === "a" ? slotAPlayerRef : slotBPlayerRef);
+
+  const [deinterlaceActiveSlots, setDeinterlaceActiveSlots] = useState<Record<SlotId, boolean>>({
+    a: false,
+    b: false,
+  });
+  const setDeinterlaceActiveSlot = (slotId: SlotId, active: boolean) =>
+    setDeinterlaceActiveSlots((prev) => (prev[slotId] === active ? prev : { ...prev, [slotId]: active }));
 
   const getActiveSlotId = () => activeSlotIdRef.current;
   const getActiveVideo = () => slotVideoRef(getActiveSlotId()).current;
@@ -351,6 +363,7 @@ export function VideoPlayer({
   const destroySlot = useEffectEvent((slotId: SlotId) => {
     slotPlayerRef(slotId).current?.destroy();
     slotPlayerRef(slotId).current = null;
+    setDeinterlaceActiveSlot(slotId, false);
   });
 
   const stopPendingTransition = useEffectEvent(() => {
@@ -558,6 +571,8 @@ export function VideoPlayer({
 
     const p = createPlayer(video, {
       wasmDecoders: { mp2: mp2WasmUrl },
+      deinterlaceCanvas: slotCanvasRef(slotId).current ?? undefined,
+      deinterlace,
     });
     p.on("error", (e) => {
       if (slotPlayerRef(slotId).current === p) {
@@ -583,6 +598,11 @@ export function VideoPlayer({
     p.on("audio-suspended", () => {
       if (slotPlayerRef(slotId).current === p) {
         handleAudioSuspended();
+      }
+    });
+    p.on("deinterlace-active-change", (active) => {
+      if (slotPlayerRef(slotId).current === p) {
+        setDeinterlaceActiveSlot(slotId, active);
       }
     });
     applyPlayerSettings(p);
@@ -730,6 +750,9 @@ export function VideoPlayer({
 
     const pendingTransition = { gen, slotId: pendingId, player: pendingPlayer, startedAt: performance.now() };
     pendingTransitionRef.current = pendingTransition;
+    // The pending slot's player resets its interlace verdict on loadSegments and
+    // starts detecting while hidden, so an interlaced verdict can be ready the
+    // moment the switch completes (no combing flash on channel change)
     pendingPlayer.loadSegments(newSegments);
 
     if (shouldAutoPlayRef.current) {
@@ -750,6 +773,11 @@ export function VideoPlayer({
       destroySlot("b");
     };
   }, []);
+
+  useEffect(() => {
+    slotAPlayerRef.current?.setDeinterlace(deinterlace);
+    slotBPlayerRef.current?.setDeinterlace(deinterlace);
+  }, [deinterlace]);
 
   useEffect(() => {
     if (!seamlessSwitch) {
@@ -1198,19 +1226,31 @@ export function VideoPlayer({
       >
         <div className="relative aspect-video h-auto max-h-full w-full max-w-full overflow-hidden [@container_video_(max-aspect-ratio:_16/9)]:h-auto [@container_video_(max-aspect-ratio:_16/9)]:w-full [@container_video_(min-aspect-ratio:_16/9)]:h-full [@container_video_(min-aspect-ratio:_16/9)]:w-auto">
           {(visibleSlotId === "a" ? (["b", "a"] as const) : (["a", "b"] as const)).map((slotId) => (
-            // biome-ignore lint/a11y/useMediaCaption: live streaming video has no caption tracks
-            <video
-              key={slotId}
-              ref={slotId === "a" ? slotAVideoRef : slotBVideoRef}
-              className={clsx(
-                "absolute inset-0 size-full min-h-0 min-w-0 object-fill",
-                visibleSlotId !== slotId && "invisible pointer-events-none",
-              )}
-              playsInline
-              webkit-playsinline="true"
-              x5-playsinline="true"
-              onClick={visibleSlotId === slotId ? handleVideoClick : undefined}
-            />
+            <div key={slotId} className="contents">
+              {/* biome-ignore lint/a11y/useMediaCaption: live streaming video has no caption tracks */}
+              <video
+                ref={slotId === "a" ? slotAVideoRef : slotBVideoRef}
+                className={clsx(
+                  "absolute inset-0 size-full min-h-0 min-w-0 object-fill",
+                  // Background slot: opacity (not visibility) keeps requestVideoFrameCallback
+                  // firing so interlace detection can warm up during seamless switch.
+                  visibleSlotId !== slotId && "opacity-0 pointer-events-none",
+                  // Active slot: hide raw video behind the deinterlaced canvas output
+                  visibleSlotId === slotId && deinterlaceActiveSlots[slotId] && "opacity-0",
+                )}
+                playsInline
+                webkit-playsinline="true"
+                x5-playsinline="true"
+                onClick={visibleSlotId === slotId ? handleVideoClick : undefined}
+              />
+              <canvas
+                ref={slotId === "a" ? slotACanvasRef : slotBCanvasRef}
+                className={clsx(
+                  "pointer-events-none absolute inset-0 size-full min-h-0 min-w-0",
+                  (visibleSlotId !== slotId || !deinterlaceActiveSlots[slotId]) && "hidden",
+                )}
+              />
+            </div>
           ))}
         </div>
 

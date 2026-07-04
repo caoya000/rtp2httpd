@@ -13,12 +13,23 @@ export interface PlayerError {
   info?: string;
 }
 
+export interface VideoTrackInfo {
+  width: number;
+  height: number;
+  /** Codec metadata says the stream may contain interlaced pictures (hint, not proof). */
+  mayBeInterlaced: boolean;
+}
+
 export interface PlayerEventMap {
   error: (error: PlayerError) => void;
   "seek-needed": (seconds: number) => void;
   "live-state-change": (isLive: boolean) => void;
   /** Fired when audio playback is blocked by autoplay policy and requires user interaction. */
   "audio-suspended": () => void;
+  /** Fired when codec-level video track info is parsed from the stream. */
+  "video-info": (info: VideoTrackInfo) => void;
+  /** Fired when deinterlaced rendering onto the overlay canvas starts/stops. */
+  "deinterlace-active-change": (active: boolean) => void;
 }
 
 export interface Player {
@@ -29,6 +40,8 @@ export interface Player {
   /** Anchor for session live edge (continuous live playback since tune-in). */
   setLiveSessionAnchor(anchor: LiveSessionAnchor): void;
   setLiveSync(enabled: boolean): void;
+  /** Switch deinterlacing at runtime. No-op when no `deinterlaceCanvas` was configured. */
+  setDeinterlace(enabled: boolean): void;
   /** Stop the current stream and reset the bound video element while keeping reusable resources alive. */
   stop(): void;
   destroy(): void;
@@ -41,6 +54,7 @@ export interface PlayerImpl {
   onError: ((error: PlayerError) => void) | null;
   onLiveStateChange?: ((isLive: boolean) => void) | null;
   onAudioSuspended?: (() => void) | null;
+  onVideoInfo?: ((info: VideoTrackInfo) => void) | null;
   loadSegments(segments: PlayerSegment[]): void;
   seek(seconds: number): void;
   goLive(targetMseSeconds: number): void;

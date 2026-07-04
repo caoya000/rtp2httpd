@@ -65,6 +65,20 @@ FONT_CANDIDATES = (
 RTSP_PROFILES = ("h264-mp2", "hevc-aac")
 # Profiles offered as multicast live channels.
 MCAST_PROFILES = ("h264-mp2", "hevc-ac3", "hevc-eac3")
+# Interlaced multicast channels for web-player deinterlacing work: 1080i TFF and
+# BFF (both should trigger the heuristic detector, and the field-order vote must
+# pick the right one) plus progressive controls at the gate boundary (1080p must
+# not false-positive, 2160p must be gated off entirely). "tff-p" is weaved TFF
+# content encoded/flagged as progressive — the codec metadata hint stays silent,
+# so only the heuristic comb detector can activate deinterlacing.
+# Tuple: (profile, size, scan) where scan is "tff" | "bff" | "tff-p" | "p".
+MCAST_SCAN_CHANNELS = (
+    ("h264-mp2", "1920x1080", "tff"),
+    ("h264-mp2", "1920x1080", "bff"),
+    ("h264-mp2", "1920x1080", "tff-p"),
+    ("h264-mp2", "1920x1080", "p"),
+    ("hevc-aac", "3840x2160", "p"),
+)
 
 # HLS live channels covering both segment specs: HLS-TS (MPEG-TS segments) and
 # HLS-fMP4 (fragmented MP4: an init.mp4 + .m4s segments). fMP4 carries AAC audio
@@ -130,10 +144,15 @@ def _tail_file(path: str, max_bytes: int = 4096) -> str:
         return ""
 
 
-def video_args(profile: str) -> list[str]:
+def video_args(profile: str, scan: str = "p") -> list[str]:
     """Encoder args for the video stream of *profile* (keyframe every second,
-    headers repeated so a client joining mid-stream can start decoding)."""
+    headers repeated so a client joining mid-stream can start decoding).
+    ``scan`` is "p" (progressive) or "tff"/"bff" for true interlaced H.264."""
+    interlaced = scan in ("tff", "bff")
     if profile.startswith("h264"):
+        x264_params = "keyint=25:min-keyint=25:scenecut=0:repeat-headers=1"
+        if interlaced:
+            x264_params += f":{scan}=1"
         return [
             "-c:v",
             "libx264",
@@ -145,8 +164,9 @@ def video_args(profile: str) -> list[str]:
             "high",
             "-pix_fmt",
             "yuv420p",
+            *(["-flags", "+ildct+ilme"] if interlaced else []),
             "-x264-params",
-            "keyint=25:min-keyint=25:scenecut=0:repeat-headers=1",
+            x264_params,
             "-b:v",
             "2M",
         ]
@@ -210,12 +230,12 @@ def catchup_filter(profile: str, begin_epoch: int) -> str:
     return f"{label},{seek},{elapsed}"
 
 
-def lavfi_inputs(size: str = "1280x720") -> list[str]:
+def lavfi_inputs(size: str = "1280x720", rate: int = 25) -> list[str]:
     return [
         "-f",
         "lavfi",
         "-i",
-        f"testsrc2=size={size}:rate=25",
+        f"testsrc2=size={size}:rate={rate}",
         "-f",
         "lavfi",
         "-i",
@@ -687,6 +707,7 @@ class MulticastLive:
         profile: str | None = None,
         ts_file: str | None = None,
         size: str = "960x540",
+        scan: str = "p",
     ):
         self.ffmpeg = ffmpeg
         self.group = group
@@ -694,6 +715,7 @@ class MulticastLive:
         self.profile = profile
         self.ts_file = ts_file
         self.size = size
+        self.scan = scan
         self.proc: subprocess.Popen[bytes] | None = None
 
     def url(self) -> str:
@@ -706,13 +728,30 @@ class MulticastLive:
             # Stream-copy the original bitstream so the exact codecs are relayed.
             return [*common, "-re", "-stream_loop", "-1", "-i", self.ts_file, "-c", "copy", "-f", "rtp_mpegts", out]
         prof = self.profile or "h264-mp2"
+        if self.scan in ("tff", "bff", "tff-p"):
+            # True interlaced content with real motion between fields: generate at
+            # field rate (50fps), then tinterlace weaves adjacent frames into the
+            # two fields of one 25fps interlaced frame. The moving testsrc2
+            # pattern guarantees combing on any motion, which is exactly what the
+            # web player's heuristic detector needs to see.
+            field_order = "bff" if self.scan == "bff" else "tff"
+            mode = "interleave_top" if field_order == "tff" else "interleave_bottom"
+            vf = f"{live_filter(prof)},tinterlace=mode={mode}"
+            if self.scan != "tff-p":
+                # "tff-p": weaved combing but the bitstream stays flagged
+                # progressive, so the player's heuristic is the only trigger
+                vf += f",fieldorder={field_order}"
+            inputs = lavfi_inputs(self.size, rate=50)
+        else:
+            vf = live_filter(prof)
+            inputs = lavfi_inputs(self.size)
         return [
             *common,
             "-re",
-            *lavfi_inputs(self.size),
+            *inputs,
             "-vf",
-            live_filter(prof),
-            *video_args(prof),
+            vf,
+            *video_args(prof, scan="p" if self.scan == "tff-p" else self.scan),
             *audio_args(prof),
             "-f",
             "rtp_mpegts",
@@ -863,6 +902,19 @@ def main() -> int:
         s = MulticastLive(args.ffmpeg, group, args.mcast_port, profile=prof)
         senders.append(s)
         mcast_channels.append(("mpegts (multicast)", mcast_labels.get(prof, f"mcast ({prof})"), s.url()))
+    for prof, size, scan in MCAST_SCAN_CHANNELS:
+        group = f"239.255.0.{octet}"
+        octet += 1
+        s = MulticastLive(args.ffmpeg, group, args.mcast_port, profile=prof, size=size, scan=scan)
+        senders.append(s)
+        height = size.split("x")[1]
+        if scan == "p":
+            scan_label = f"{height}p"
+        elif scan == "tff-p":
+            scan_label = f"{height}p-combed"
+        else:
+            scan_label = f"{height}i-{scan}"
+        mcast_channels.append(("mpegts (scan)", f"mcast {scan_label} ({prof})", s.url()))
     for path in args.ts_file:
         if not os.path.isfile(path):
             print(f"WARNING: --ts-file not found, skipping: {path}", file=sys.stderr)
