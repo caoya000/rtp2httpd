@@ -104,6 +104,13 @@ export class VideoRenderer {
    * measured. Stored in device pixels so the per-frame path needs no DPR read.
    */
   private cachedDisplaySize: { width: number; height: number } | null = null;
+  /**
+   * Whether the current `resizeObserver` is actually observing `device-pixel-content-box`.
+   * Safari doesn't recognize that box option as a valid enum value and throws a TypeError
+   * from `observe()` instead of ignoring it, so `ensureSizeObserved` falls back to
+   * `content-box` there and `handleResize` must convert CSS px to device px itself.
+   */
+  private usesDevicePixelBox = true;
 
   /**
    * Called once per new decoded frame while running, before any upload or draw.
@@ -791,17 +798,35 @@ export class VideoRenderer {
   }
 
   private readonly handleResize = (entries: ResizeObserverEntry[]) => {
-    // `device-pixel-content-box` reports exact device pixels and tracks DPR automatically,
-    // so no CSS-pixel × devicePixelRatio conversion is needed.
-    const box = entries[entries.length - 1]?.devicePixelContentBoxSize?.[0];
-    if (!box) return;
+    const entry = entries[entries.length - 1];
+    if (!entry) return;
+
+    let inlineSize: number;
+    let blockSize: number;
+    if (this.usesDevicePixelBox) {
+      // `device-pixel-content-box` reports exact device pixels and tracks DPR automatically,
+      // so no CSS-pixel × devicePixelRatio conversion is needed.
+      const box = entry.devicePixelContentBoxSize?.[0];
+      if (!box) return;
+      inlineSize = box.inlineSize;
+      blockSize = box.blockSize;
+    } else {
+      // Fallback for browsers without device-pixel-content-box support (e.g. Safari < 16.4):
+      // `content-box` is reported in CSS pixels, so scale by DPR to match device pixels.
+      const box = entry.contentBoxSize?.[0];
+      if (!box) return;
+      const dpr = this.observerDoc?.defaultView?.devicePixelRatio || 1;
+      inlineSize = box.inlineSize * dpr;
+      blockSize = box.blockSize * dpr;
+    }
+
     // Keep the last nonzero size; ignore transient 0×0 (e.g. ancestor briefly hidden).
-    if (box.inlineSize > 0 && box.blockSize > 0) {
+    if (inlineSize > 0 && blockSize > 0) {
       const prev = this.cachedDisplaySize;
-      if (!prev || prev.width !== box.inlineSize || prev.height !== box.blockSize) {
-        Log.i(TAG, `Display size changed to ${box.inlineSize}x${box.blockSize} (device px)`);
+      if (!prev || prev.width !== inlineSize || prev.height !== blockSize) {
+        Log.i(TAG, `Display size changed to ${inlineSize}x${blockSize} (device px)`);
       }
-      this.cachedDisplaySize = { width: box.inlineSize, height: box.blockSize };
+      this.cachedDisplaySize = { width: inlineSize, height: blockSize };
     }
   };
 
@@ -848,7 +873,16 @@ export class VideoRenderer {
     if (target !== this.observedSizeEl) {
       if (this.observedSizeEl) this.resizeObserver.unobserve(this.observedSizeEl);
       this.observedSizeEl = target;
-      this.resizeObserver.observe(target, { box: "device-pixel-content-box" });
+      try {
+        this.resizeObserver.observe(target, { box: "device-pixel-content-box" });
+        this.usesDevicePixelBox = true;
+      } catch {
+        // Safari throws a TypeError for the "device-pixel-content-box" box option instead
+        // of ignoring it — fall back to content-box (CSS px, converted in handleResize).
+        Log.w(TAG, "device-pixel-content-box unsupported, falling back to content-box");
+        this.usesDevicePixelBox = false;
+        this.resizeObserver.observe(target, { box: "content-box" });
+      }
     }
 
     // Seed synchronously so the current frame is correct before RO fires. getBoundingClientRect
