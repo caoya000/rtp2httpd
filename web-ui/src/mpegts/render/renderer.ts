@@ -48,9 +48,10 @@ interface RenderTarget {
  * Rendering and presentation are decoupled for bwdif: both fields of a frame
  * are rendered up front when the frame arrives, the first field is presented
  * immediately, and the second field is presented by a requestAnimationFrame
- * clock on the vsync nearest `expectedDisplayTime + frameDuration / 2`. A
- * setTimeout here would drift against the vsync grid and make each field's
- * on-screen duration irregular, which reads as motion judder.
+ * clock on the vsync nearest half a frame duration after the first field's
+ * estimated display time (see `secondFieldPresentAt`). A setTimeout here
+ * would drift against the vsync grid and make each field's on-screen
+ * duration irregular, which reads as motion judder.
  */
 export class VideoRenderer {
   private readonly video: HTMLVideoElement;
@@ -449,9 +450,9 @@ export class VideoRenderer {
   }
 
   /**
-   * Presentation clock: one requestAnimationFrame per display refresh while a
-   * second field is queued. Each tick presents the queued field once its
-   * target display time falls within the upcoming vsync interval, so field
+   * Presentation clock: one requestAnimationFrame per display refresh while
+   * playing. In the bwdif stage each tick presents the queued second field once
+   * its target display time falls within the upcoming vsync interval, so field
    * flips always land on the vsync grid instead of a timer's completion point.
    */
   private startPresentClock(): void {
@@ -525,15 +526,15 @@ export class VideoRenderer {
   }
 
   private scheduleFrame(): void {
-    this.rvfcHandle = this.video.requestVideoFrameCallback((_now, metadata) => {
+    this.rvfcHandle = this.video.requestVideoFrameCallback((now, metadata) => {
       this.rvfcHandle = 0;
       if (!this.running) return;
-      this.processFrame(metadata);
+      this.processFrame(now, metadata);
       if (this.running) this.scheduleFrame();
     });
   }
 
-  private processFrame(metadata: VideoFrameCallbackMetadata): void {
+  private processFrame(now: DOMHighResTimeStamp, metadata: VideoFrameCallbackMetadata): void {
     const gl = this.gl;
     if (!gl || this.contextLost) return;
 
@@ -555,7 +556,7 @@ export class VideoRenderer {
       const firstField = this.fieldOrder === "tff" ? 0 : 1;
       this.drawCurrentOutput(firstField);
       if (!this.video.paused && frameDurationMs > 10) {
-        this.queueSecondField(firstField === 0 ? 1 : 0, metadata.expectedDisplayTime + frameDurationMs / 2);
+        this.queueSecondField(firstField === 0 ? 1 : 0, this.secondFieldPresentAt(now, frameDurationMs));
       }
     } else {
       this.drawCurrentOutput(0);
@@ -569,6 +570,24 @@ export class VideoRenderer {
 
   private lastMediaTime = -1;
   private frameDurationEstimateMs = 40;
+
+  /**
+   * Target display time for the second field: half a frame after the first.
+   *
+   * Derived purely from the rVFC callback timestamp: the first field drawn in
+   * this rendering update reaches the screen roughly one refresh from `now`,
+   * so the second field is due `frameDuration / 2` after that. `now` shares
+   * the rAF/performance.now() timeline the presentation clock ticks on, and
+   * `refreshIntervalMs` is the median-estimated interval of that clock, so
+   * this holds on any display refresh rate. `metadata.expectedDisplayTime`
+   * would be the spec'd source for the same instant, but Safari reports it on
+   * an unrelated clock domain (off by days), which made the presentation
+   * clock's vsync test always pass and collapsed 50i to an effective 25p —
+   * so it is deliberately not used.
+   */
+  private secondFieldPresentAt(now: DOMHighResTimeStamp, frameDurationMs: number): number {
+    return now + this.refreshIntervalMs + frameDurationMs / 2;
+  }
 
   /** Estimate the source frame duration from consecutive rVFC mediaTime values. */
   private frameDurationMs(metadata: VideoFrameCallbackMetadata): number {
