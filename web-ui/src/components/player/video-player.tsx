@@ -386,6 +386,8 @@ export function VideoPlayer({
     }, 3000);
   }, []);
 
+  // Wake / keep-alive: mouseenter + mousemove (including touch-synthesized move on iOS).
+  // Auto-hide is timer-only.
   const showControlsImmediately = useCallback(() => {
     setShowControls(true);
     resetControlsTimer();
@@ -1241,14 +1243,6 @@ export function VideoPlayer({
     };
   }, [isDocumentPiP]);
 
-  const handleVideoClick = useCallback(() => {
-    if (showControls) {
-      hideControlsImmediately();
-    } else {
-      showControlsImmediately();
-    }
-  }, [showControls, hideControlsImmediately, showControlsImmediately]);
-
   const handleMuteToggle = useEffectEvent(() => {
     const video = getActiveVideo();
     if (video) {
@@ -1405,8 +1399,8 @@ export function VideoPlayer({
         isDocumentPiP ? "h-screen min-h-screen aspect-auto" : "md:aspect-auto md:h-full",
         !showControls && "cursor-none",
       )}
+      onMouseEnter={showControlsImmediately}
       onMouseMove={showControlsImmediately}
-      onMouseLeave={hideControlsImmediately}
     >
       {/* Player area sizes the 16:9 frame via container queries; sources stretch to 16:9 inside it. */}
       <div className="relative aspect-video h-auto max-h-full w-full max-w-full overflow-hidden [@container_video_(max-aspect-ratio:_16/9)]:h-auto [@container_video_(max-aspect-ratio:_16/9)]:w-full [@container_video_(min-aspect-ratio:_16/9)]:h-full [@container_video_(min-aspect-ratio:_16/9)]:w-auto">
@@ -1427,7 +1421,6 @@ export function VideoPlayer({
               playsInline
               webkit-playsinline="true"
               x5-playsinline="true"
-              onClick={visibleSlotId === slotId ? handleVideoClick : undefined}
             />
             <canvas
               ref={slotId === "a" ? slotACanvasRef : slotBCanvasRef}
@@ -1457,7 +1450,7 @@ export function VideoPlayer({
         <div
           className={clsx(
             "absolute top-4 right-4 md:top-8 md:right-8 z-10 flex flex-col gap-2 md:gap-3 items-end transition-opacity duration-300",
-            showControls ? "opacity-100" : "opacity-0",
+            showControls ? "opacity-100" : "opacity-0 pointer-events-none",
           )}
         >
           <div
@@ -1534,7 +1527,9 @@ export function VideoPlayer({
           role="toolbar"
           className={clsx(
             "absolute bottom-0 left-0 right-0 z-10 transition-opacity duration-300",
-            showControls ? "opacity-100" : "opacity-0 has-focus-visible:opacity-100",
+            showControls
+              ? "opacity-100"
+              : "opacity-0 pointer-events-none has-focus-visible:opacity-100 has-focus-visible:pointer-events-auto",
           )}
           onMouseEnter={showControlsImmediately}
         >
