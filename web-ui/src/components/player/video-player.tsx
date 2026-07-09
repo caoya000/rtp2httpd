@@ -1,6 +1,15 @@
 import { clsx } from "clsx";
 import { Play } from "lucide-react";
-import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
+import {
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { createPortal } from "react-dom";
 import { usePlayerTranslation } from "../../hooks/use-player-translation";
 import {
@@ -386,8 +395,6 @@ export function VideoPlayer({
     }, 3000);
   }, []);
 
-  // Wake / keep-alive: mouseenter + mousemove (including touch-synthesized move on iOS).
-  // Auto-hide is timer-only.
   const showControlsImmediately = useCallback(() => {
     setShowControls(true);
     resetControlsTimer();
@@ -400,6 +407,46 @@ export function VideoPlayer({
     }
     setShowControls(false);
   }, []);
+
+  // Hover model for pointers that have a real hover state (mouse / pen):
+  // enter or move shows controls and resets the 3s idle timer, leaving hides them.
+  // Touch has no hover — taps synthesize compatibility mouse events that would
+  // otherwise race enter/leave — so we ignore touch here and let the click
+  // handler own toggling for that input type. No conflict detection needed.
+  const handlePointerHover = useCallback(
+    (event: ReactPointerEvent) => {
+      if (event.pointerType === "touch") return;
+      showControlsImmediately();
+    },
+    [showControlsImmediately],
+  );
+
+  const handlePointerLeave = useCallback(
+    (event: ReactPointerEvent) => {
+      if (event.pointerType === "touch") return;
+      hideControlsImmediately();
+    },
+    [hideControlsImmediately],
+  );
+
+  // Click / tap toggles controls. The handler lives on the whole player surface (not
+  // just the <video>) so taps on the letterbox bars outside the 16:9 frame — common on
+  // desktop/tablet where the surface is taller/wider than the video — toggle too. We
+  // only act when the click lands on the surface itself or the video element; overlays
+  // (toolbar buttons, channel info) sit above and own their own clicks, so a click that
+  // bubbles up from them is ignored and never dismisses the controls.
+  const handleSurfaceClick = useCallback(
+    (event: ReactMouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (target !== event.currentTarget && target.tagName !== "VIDEO") return;
+      if (showControls) {
+        hideControlsImmediately();
+      } else {
+        showControlsImmediately();
+      }
+    },
+    [showControls, hideControlsImmediately, showControlsImmediately],
+  );
 
   // Start auto-hide timer on mount
   useEffect(() => {
@@ -1391,6 +1438,7 @@ export function VideoPlayer({
 
   const isVideoPiP = isPiP && !isDocumentPiP;
   const playerSurface = (
+    // biome-ignore lint/a11y/useKeyWithClickEvents: surface click only toggles chrome visibility; keyboard users drive the real controls via focusable buttons and global key shortcuts
     <div
       role="application"
       ref={playerSurfaceRef}
@@ -1399,8 +1447,10 @@ export function VideoPlayer({
         isDocumentPiP ? "h-screen min-h-screen aspect-auto" : "md:aspect-auto md:h-full",
         !showControls && "cursor-none",
       )}
-      onMouseEnter={showControlsImmediately}
-      onMouseMove={showControlsImmediately}
+      onPointerEnter={handlePointerHover}
+      onPointerMove={handlePointerHover}
+      onPointerLeave={handlePointerLeave}
+      onClick={handleSurfaceClick}
     >
       {/* Player area sizes the 16:9 frame via container queries; sources stretch to 16:9 inside it. */}
       <div className="relative aspect-video h-auto max-h-full w-full max-w-full overflow-hidden [@container_video_(max-aspect-ratio:_16/9)]:h-auto [@container_video_(max-aspect-ratio:_16/9)]:w-full [@container_video_(min-aspect-ratio:_16/9)]:h-full [@container_video_(min-aspect-ratio:_16/9)]:w-auto">
