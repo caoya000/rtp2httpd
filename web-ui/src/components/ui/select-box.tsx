@@ -6,19 +6,19 @@ export interface SelectBoxProps extends SelectHTMLAttributes<HTMLSelectElement> 
   containerClassName?: string;
 }
 
-export function SelectBox({ containerClassName, className, children, ...props }: SelectBoxProps) {
+export function SelectBox({ containerClassName = "min-w-[120px]", className, children, ...props }: SelectBoxProps) {
   return (
-    <div className={clsx("relative inline-flex min-w-[120px] items-center justify-end", containerClassName)}>
+    <div className={clsx("relative inline-flex items-center justify-end", containerClassName)}>
       <select
         className={clsx(
-          "peer h-9 w-full appearance-none rounded-lg border border-input bg-background/90 px-3 pr-10 text-sm font-medium text-foreground shadow-sm transition focus:outline-none focus:ring-2 focus:ring-ring cursor-pointer disabled:cursor-not-allowed disabled:opacity-50",
+          "peer h-9 w-full cursor-pointer appearance-none rounded-[var(--radius)] border border-input/80 bg-background/82 px-3 pr-10 font-semibold text-foreground text-sm shadow-none transition-[color,background-color,border-color,box-shadow] hover:border-primary/30 hover:bg-background/75 motion-reduce:transition-none focus-visible:border-primary/50 focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 dark:bg-secondary/72",
           className,
         )}
         {...props}
       >
         {children}
       </select>
-      <ChevronDown className="pointer-events-none absolute right-3 h-4 w-4 text-muted-foreground transition-transform duration-200 peer-focus:rotate-180" />
+      <ChevronDown className="pointer-events-none absolute right-3 h-4 w-4 text-muted-foreground transition-transform duration-200 peer-focus:rotate-180 peer-focus:text-primary" />
     </div>
   );
 }

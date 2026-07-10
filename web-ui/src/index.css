@@ -3,6 +3,10 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
+  --font-sans:
+    "Inter Variable", "SF Pro Display", "SF Pro Text", "Segoe UI Variable", "Segoe UI", "PingFang SC",
+    "Microsoft YaHei", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "SFMono-Regular", "Cascadia Code", "Roboto Mono", ui-monospace, monospace;
   --color-border: hsl(var(--border));
   --color-input: hsl(var(--input));
   --color-ring: hsl(var(--ring));
@@ -37,52 +41,88 @@
 }
 
 :root {
-  --background: 0 0% 98%;
-  --foreground: 220 15% 15%;
+  --background: 226 44% 97%;
+  --foreground: 229 36% 14%;
   --card: 0 0% 100%;
-  --card-foreground: 220 15% 15%;
+  --card-foreground: 229 36% 14%;
   --popover: 0 0% 100%;
-  --popover-foreground: 220 15% 15%;
-  --primary: 221 83% 53%;
+  --popover-foreground: 229 36% 14%;
+  --primary: 252 82% 59%;
   --primary-foreground: 0 0% 100%;
-  --secondary: 210 40% 96%;
-  --secondary-foreground: 222 47% 11%;
-  --muted: 210 40% 96%;
-  --muted-foreground: 215 16% 46%;
-  --accent: 210 40% 96%;
-  --accent-foreground: 222 47% 11%;
-  --destructive: 0 84% 60%;
+  --secondary: 228 46% 94%;
+  --secondary-foreground: 232 36% 22%;
+  --muted: 225 31% 93%;
+  --muted-foreground: 226 15% 43%;
+  --accent: 250 58% 94%;
+  --accent-foreground: 252 52% 29%;
+  --destructive: 354 75% 48%;
   --destructive-foreground: 0 0% 98%;
-  --border: 214 32% 91%;
-  --input: 214 32% 91%;
-  --ring: 221 83% 53%;
-  --radius: 0.75rem;
+  --border: 226 27% 86%;
+  --input: 226 27% 82%;
+  --ring: 252 82% 59%;
+  --radius: 0.875rem;
 }
 
 .dark {
-  --background: 222 47% 8%;
-  --foreground: 210 40% 98%;
-  --card: 222 47% 11%;
-  --card-foreground: 210 40% 98%;
-  --popover: 222 47% 11%;
-  --popover-foreground: 210 40% 98%;
-  --primary: 217 91% 60%;
-  --primary-foreground: 210 40% 98%;
-  --secondary: 217 32% 17%;
-  --secondary-foreground: 210 40% 98%;
-  --muted: 217 32% 17%;
-  --muted-foreground: 215 20% 65%;
-  --accent: 217 32% 17%;
-  --accent-foreground: 210 40% 98%;
-  --destructive: 0 63% 47%;
-  --destructive-foreground: 210 40% 98%;
-  --border: 217 32% 17%;
-  --input: 217 32% 17%;
-  --ring: 224 76% 48%;
+  --background: 231 46% 7%;
+  --foreground: 220 32% 96%;
+  --card: 229 37% 11%;
+  --card-foreground: 220 32% 96%;
+  --popover: 229 38% 10%;
+  --popover-foreground: 220 32% 96%;
+  --primary: 252 92% 70%;
+  --primary-foreground: 235 44% 10%;
+  --secondary: 228 30% 17%;
+  --secondary-foreground: 220 32% 96%;
+  --muted: 228 25% 17%;
+  --muted-foreground: 224 16% 66%;
+  --accent: 248 33% 19%;
+  --accent-foreground: 246 82% 88%;
+  --destructive: 354 72% 50%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 228 23% 22%;
+  --input: 228 24% 24%;
+  --ring: 252 92% 70%;
 }
 
 @layer base {
+  html {
+    @apply min-h-full bg-background font-sans;
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    @apply min-h-full min-w-80;
+    font-feature-settings:
+      "kern" 1,
+      "liga" 1,
+      "calt" 1;
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+  }
+
+  ::selection {
+    @apply bg-primary/20 text-foreground;
+  }
+
   :focus-visible {
-    @apply outline-none ring-2 ring-ring;
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto;
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+    transition-duration: 0.01ms;
   }
 }

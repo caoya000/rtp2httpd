@@ -129,10 +129,15 @@ function ChannelListComponent({
     }, 0);
 
     if (!currentChannel) return;
-    if (nextScrollBehaviorRef.current === "skip") return;
+    const requestedBehavior = nextScrollBehaviorRef.current;
+    if (requestedBehavior === "skip") return;
+    const behavior =
+      requestedBehavior === "smooth" && window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        ? "instant"
+        : requestedBehavior;
 
     currentChannelRef.current?.scrollIntoView({
-      behavior: nextScrollBehaviorRef.current,
+      behavior,
       block: "center",
     });
   }, [currentChannel]);
@@ -176,54 +181,42 @@ function ChannelListComponent({
   }, []);
 
   return (
-    <div className="flex h-full flex-col bg-card">
+    <div className="flex h-full flex-col bg-transparent">
       {/* Search */}
       <div className="px-2 pt-2 pb-0">
-        <div className="flex items-center">
-          <div className="relative flex-1">
+        <div className="flex items-center gap-2">
+          <div className="relative min-w-0 flex-1">
             <input
               type="text"
               placeholder={t("searchChannels")}
               value={searchQuery}
               onChange={handleSearchInputChange}
               onKeyDown={handleSearchKeyDown}
-              className="w-full rounded-lg border border-border bg-background px-3 py-1 md:py-1.5 pl-8 md:pl-9 text-xs md:text-sm shadow-sm transition focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+              className="h-8 w-full rounded-xl border border-blue-900/10 bg-white/78 px-3 py-0 pl-8 text-slate-800 text-xs shadow-none transition placeholder:text-slate-400 focus:border-blue-400/60 focus:outline-none focus:ring-2 focus:ring-blue-400/20 dark:border-blue-100/10 dark:bg-slate-900/85 dark:text-blue-50 dark:placeholder:text-slate-500 md:h-9 md:pl-9 md:text-sm"
             />
-            <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 md:h-4 md:w-4 -translate-y-1/2 text-muted-foreground" />
+            <Search className="absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2 text-blue-600/65 dark:text-blue-300/55 md:h-4 md:w-4" />
           </div>
-          {settingsSlot && <div>{settingsSlot}</div>}
+          {settingsSlot && <div className="shrink-0">{settingsSlot}</div>}
         </div>
       </div>
 
       {/* Groups */}
       {groups && groups.length > 0 && (
-        <div className="border-y border-border bg-muted/30 px-2 py-2 mt-2">
-          <div className="flex flex-wrap gap-1.5">
-            <button
-              type="button"
-              onClick={() => setSelectedGroup(null)}
-              className={clsx(
-                "rounded-lg px-2.5 md:px-2 py-0.5 md:py-1 text-xs font-medium transition-[color,background-color,box-shadow]",
-                selectedGroup === null
-                  ? "bg-primary text-primary-foreground shadow-sm"
-                  : "bg-background text-muted-foreground cursor-pointer hover:bg-background/80 hover:text-foreground",
-              )}
-            >
-              {t("allChannels")}
-            </button>
-            {groups?.map((group) => (
+        <div className="mt-2 border-blue-950/10 border-y bg-[linear-gradient(90deg,rgba(224,242,254,0.55),rgba(238,242,255,0.68))] px-2 py-2 backdrop-blur-xl dark:border-blue-100/10 dark:bg-[linear-gradient(90deg,rgba(8,47,73,0.3),rgba(30,27,75,0.36))]">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {[null, ...groups].map((group) => (
               <button
                 type="button"
-                key={group}
+                key={group ?? "all"}
                 onClick={() => setSelectedGroup(group)}
                 className={clsx(
-                  "rounded-lg px-2.5 md:px-2 py-0.5 md:py-1 text-xs font-medium transition-[color,background-color,box-shadow]",
+                  "min-h-7 max-w-full overflow-hidden text-ellipsis whitespace-nowrap rounded-full border px-2.5 py-1 font-medium text-xs leading-none transition-[color,background-color,border-color,box-shadow]",
                   selectedGroup === group
-                    ? "bg-primary text-primary-foreground shadow-sm"
-                    : "cursor-pointer bg-background text-muted-foreground hover:bg-background/80 hover:text-foreground",
+                    ? "border-blue-400/30 bg-blue-500/10 text-blue-700 shadow-[0_4px_12px_rgba(37,99,235,0.1)] dark:border-blue-300/20 dark:bg-blue-400/14 dark:text-blue-200 dark:shadow-[0_4px_12px_rgba(37,99,235,0.08)]"
+                    : "cursor-pointer border border-blue-900/8 bg-white/55 text-slate-500 hover:border-blue-400/30 hover:bg-blue-50/80 hover:text-blue-800 dark:border-blue-100/10 dark:bg-slate-950/35 dark:text-slate-400 dark:hover:bg-blue-300/10 dark:hover:text-blue-100",
                 )}
               >
-                {group}
+                {group ?? t("allChannels")}
               </button>
             ))}
           </div>
