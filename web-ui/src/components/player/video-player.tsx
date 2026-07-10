@@ -1712,6 +1712,7 @@ export function VideoPlayer({
             locale={locale}
             mediaInfo={slotMediaInfo[visibleSlotId]}
             renderState={slotRenderStates[visibleSlotId]}
+            autoDeinterlace={autoDeinterlace}
             seekStartTime={streamStartTime}
             isPlaying={isPlaying}
             onPlayPause={togglePlayPause}

@@ -305,7 +305,16 @@ export function createVideoRenderPipeline(
     setAutoDeinterlaceEnabled(next: boolean) {
       if (autoDeinterlaceEnabled === next) return;
       autoDeinterlaceEnabled = next;
+      if (!next) {
+        interlaced = false;
+        detectedScanType = undefined;
+        fieldOrder = "tff";
+        resetCadence();
+        detector.reset();
+        renderer.setFieldOrder(fieldOrder);
+      }
       apply();
+      publishState();
     },
     setPictureEnhancementEnabled(next: boolean) {
       if (pictureEnhancementEnabled === next) return;

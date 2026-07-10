@@ -38,6 +38,7 @@ interface PlayerControlsProps {
   // Technical information for the currently visible player slot
   mediaInfo: PlayerMediaInfo | null;
   renderState: PlayerRenderState;
+  autoDeinterlace: boolean;
   // The absolute time of the last seek position (null for live mode)
   seekStartTime: Date;
   // Video element controls
@@ -69,6 +70,7 @@ export function PlayerControls({
   currentTime,
   mediaInfo,
   renderState,
+  autoDeinterlace,
   seekStartTime,
   isPlaying,
   onPlayPause,
@@ -350,7 +352,12 @@ export function PlayerControls({
           </div>
 
           <div className="ml-1.5 flex h-7 min-w-0 basis-0 flex-1 items-center overflow-hidden md:ml-2 md:h-12">
-            <PlayerMediaBadges mediaInfo={mediaInfo} locale={locale} renderState={renderState} />
+            <PlayerMediaBadges
+              mediaInfo={mediaInfo}
+              locale={locale}
+              renderState={renderState}
+              autoDeinterlace={autoDeinterlace}
+            />
           </div>
         </div>
 
