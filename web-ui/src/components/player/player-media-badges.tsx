@@ -149,7 +149,7 @@ export function PlayerMediaBadges({ mediaInfo, locale, renderState }: PlayerMedi
 
   return (
     <ul
-      className="m-0 flex max-h-11 w-full min-w-0 list-none flex-wrap content-start items-center gap-x-1 gap-y-1 overflow-hidden p-0"
+      className="m-0 flex max-h-5 w-full min-w-0 touch-pan-x list-none flex-nowrap content-start items-center gap-x-1 gap-y-1 overflow-x-auto overflow-y-hidden overscroll-x-contain p-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:max-h-11 md:touch-auto md:flex-wrap md:overflow-hidden"
       aria-label={t("mediaInfoLabel")}
     >
       {visibleBadges.map((badge) => (
