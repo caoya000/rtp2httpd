@@ -432,12 +432,12 @@ function PlayerPage() {
         {/* Sidebar - Mobile: always visible (below video, hidden in fullscreen), Desktop: toggle-able side panel (visible in fullscreen) */}
         <div
           className={clsx(
-            "flex w-full flex-1 flex-col overflow-hidden border-blue-950/10 border-t bg-white/68 shadow-[-14px_0_40px_rgba(30,64,175,0.06)] backdrop-blur-2xl dark:border-blue-100/10 dark:bg-[linear-gradient(160deg,rgba(8,20,43,0.82),rgba(22,24,65,0.74))] dark:shadow-[-18px_0_48px_rgba(1,7,24,0.28)] md:w-80 md:flex-initial md:border-t-0 md:border-l",
+            "flex w-full flex-1 flex-col overflow-hidden border-blue-950/10 border-t bg-white/68 shadow-[-14px_0_40px_rgba(30,64,175,0.06)] backdrop-blur-2xl dark:border-blue-100/10 dark:bg-[linear-gradient(160deg,rgba(5,13,32,0.96),rgba(17,16,49,0.92))] dark:shadow-[-18px_0_48px_rgba(1,7,24,0.28)] md:w-80 md:flex-initial md:border-t-0 md:border-l",
             (showSidebar || isMobile) && !(isFullscreen && isMobile) ? "" : "hidden",
           )}
         >
           {/* Sidebar Tabs */}
-          <div className="flex shrink-0 items-center border-blue-950/10 border-b bg-white/44 shadow-[0_8px_24px_rgba(30,64,175,0.045)] backdrop-blur-xl dark:border-blue-100/10 dark:bg-slate-950/28">
+          <div className="flex shrink-0 items-center border-blue-950/10 border-b bg-white/44 shadow-[0_8px_24px_rgba(30,64,175,0.045)] backdrop-blur-xl dark:border-blue-100/10 dark:bg-[linear-gradient(90deg,#1a2035,#292643)]">
             {(["channels", "epg"] as const).map((view) => (
               <button
                 type="button"

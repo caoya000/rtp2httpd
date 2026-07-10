@@ -192,7 +192,7 @@ function ChannelListComponent({
               value={searchQuery}
               onChange={handleSearchInputChange}
               onKeyDown={handleSearchKeyDown}
-              className="h-8 w-full rounded-xl border border-blue-900/10 bg-white/78 px-3 py-0 pl-8 text-slate-800 text-xs shadow-none transition placeholder:text-slate-400 focus:border-blue-400/60 focus:outline-none focus:ring-2 focus:ring-blue-400/20 dark:border-blue-100/10 dark:bg-slate-900/85 dark:text-blue-50 dark:placeholder:text-slate-500 md:h-9 md:pl-9 md:text-sm"
+              className="h-8 w-full rounded-xl border border-blue-900/10 bg-white/78 px-3 py-0 pl-8 text-slate-800 text-xs shadow-none transition placeholder:text-slate-400 focus:border-ring/60 focus:outline-none focus:ring-2 focus:ring-ring/20 dark:border-blue-100/10 dark:bg-slate-900/85 dark:text-blue-50 dark:placeholder:text-slate-500 md:h-9 md:pl-9 md:text-sm"
             />
             <Search className="absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2 text-blue-600/65 dark:text-blue-300/55 md:h-4 md:w-4" />
           </div>
@@ -202,7 +202,7 @@ function ChannelListComponent({
 
       {/* Groups */}
       {groups && groups.length > 0 && (
-        <div className="mt-2 border-blue-950/10 border-y bg-[linear-gradient(90deg,rgba(224,242,254,0.55),rgba(238,242,255,0.68))] px-2 py-2 backdrop-blur-xl dark:border-blue-100/10 dark:bg-[linear-gradient(90deg,rgba(8,47,73,0.3),rgba(30,27,75,0.36))]">
+        <div className="mt-2 border-blue-950/10 border-y bg-[linear-gradient(90deg,rgba(224,242,254,0.55),rgba(238,242,255,0.68))] px-2 py-2 backdrop-blur-xl dark:border-blue-100/10 dark:bg-[linear-gradient(90deg,rgba(4,19,42,0.6),rgba(20,17,58,0.58))]">
           <div className="flex flex-wrap items-center gap-1.5">
             {[null, ...groups].map((group) => (
               <button

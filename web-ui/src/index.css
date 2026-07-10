@@ -59,7 +59,7 @@
   --destructive-foreground: 0 0% 98%;
   --border: 226 27% 86%;
   --input: 226 27% 82%;
-  --ring: 252 82% 59%;
+  --ring: 234 89% 64%;
   --radius: 0.875rem;
 }
 
@@ -82,7 +82,7 @@
   --destructive-foreground: 0 0% 100%;
   --border: 228 23% 22%;
   --input: 228 24% 24%;
-  --ring: 252 92% 70%;
+  --ring: 234 89% 64%;
 }
 
 @layer base {

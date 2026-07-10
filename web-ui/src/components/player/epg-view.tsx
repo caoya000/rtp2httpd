@@ -166,7 +166,7 @@ function EPGViewComponent({
           return (
             <div key={dateKey} className="relative">
               {/* Date Header */}
-              <div className="sticky top-0 z-10 border-blue-950/10 border-b bg-white/66 px-3 py-1.5 shadow-[0_8px_20px_rgba(30,64,175,0.06)] backdrop-blur-2xl dark:border-blue-100/10 dark:bg-slate-950/62 dark:shadow-[0_8px_20px_rgba(0,0,0,0.18)] md:px-4 md:py-2">
+              <div className="sticky top-0 z-10 border-blue-950/10 border-b bg-white/66 px-3 py-1.5 shadow-[0_8px_20px_rgba(30,64,175,0.06)] backdrop-blur-2xl dark:border-blue-100/10 dark:bg-[linear-gradient(90deg,#151c32,#25223f)] dark:shadow-[0_8px_20px_rgba(0,0,0,0.18)] md:px-4 md:py-2">
                 <h3 className="font-semibold text-blue-800 text-xs tracking-wide dark:text-blue-100 md:text-sm">
                   {formatRelativeDate(date)}
                 </h3>
@@ -190,13 +190,8 @@ function EPGViewComponent({
                           PLAYER_SCROLL_LIST_ITEM_CLASS,
                           "w-full text-left",
                           playing ? PLAYER_LIST_SURFACE_SELECTED_CLASS : PLAYER_LIST_SURFACE_DEFAULT_CLASS,
-                          !playing && isPast && "opacity-65",
                           ((isPast && supportsCatchup) || onAir) && "cursor-pointer",
-                          !playing &&
-                            ((isPast && supportsCatchup) || onAir) && [
-                              "hover:opacity-100",
-                              PLAYER_LIST_SURFACE_HOVER_CLASS,
-                            ],
+                          !playing && ((isPast && supportsCatchup) || onAir) && PLAYER_LIST_SURFACE_HOVER_CLASS,
                         )}
                         onClick={() => {
                           if (isPast && supportsCatchup) {
