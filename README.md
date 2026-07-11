@@ -68,7 +68,7 @@ https://github.com/user-attachments/assets/ca1a332f-d6e7-4a1e-be88-92bef67758b3
 
 ### 内置播放器
 
-https://github.com/user-attachments/assets/b32f134d-87ac-46d0-90fe-50ffa410069a
+https://github.com/user-attachments/assets/efa2124b-329e-4ab0-a01d-81ee6f8998c4
 
 > [!TIP]
 > 需要配置 M3U 播放列表后使用，通过浏览器访问 `http://<server:port>/player` 即可打开。
@@ -76,7 +76,7 @@ https://github.com/user-attachments/assets/b32f134d-87ac-46d0-90fe-50ffa410069a
 
 ### 实时状态监控
 
-<img width="3046" height="1508" alt="web-dashboard" src="https://github.com/user-attachments/assets/8758c0ab-b144-41ed-8d90-9c41b375e22b" />
+<img width="2890" height="1762" alt="web-dashboard" src="https://github.com/user-attachments/assets/09ad1e6e-f21f-4635-9706-04833063ba1b" />
 
 ### 25 条 1080p 组播流同时播放
 

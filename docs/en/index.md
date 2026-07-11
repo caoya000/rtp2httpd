@@ -91,7 +91,7 @@ features:
         <h3>25 Concurrent 1080p Multicast Streams</h3>
       </header>
       <div class="demo-card__media">
-        <video controls muted playsinline preload="metadata" src="https://github.com/user-attachments/assets/9d531ab6-6c35-4c50-802a-71f88b6b22c5"></video>
+        <video controls muted playsinline preload="metadata" src="https://github.com/user-attachments/assets/efa2124b-329e-4ab0-a01d-81ee6f8998c4"></video>
       </div>
       <aside class="demo-callout">
         <span class="demo-callout__label">Performance</span>
