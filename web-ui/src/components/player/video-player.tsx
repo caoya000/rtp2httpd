@@ -1853,7 +1853,8 @@ export function VideoPlayer({
         <div
           role="toolbar"
           className={clsx(
-            "absolute bottom-0 left-0 right-0 z-10 transition-opacity duration-300",
+            "absolute bottom-0 left-[calc(0px_-_env(safe-area-inset-left))] right-[calc(0px_-_env(safe-area-inset-right))] z-10 transition-opacity duration-300",
+            showSidebar && "md:right-0",
             showControls
               ? "opacity-100"
               : "opacity-0 pointer-events-none has-focus-visible:opacity-100 has-focus-visible:pointer-events-auto",
@@ -1893,7 +1894,12 @@ export function VideoPlayer({
   );
 
   return (
-    <div className="relative w-full bg-[radial-gradient(circle_at_50%_20%,#102044_0%,#050b18_52%,#01030a_100%)] pt-[env(safe-area-inset-top)] md:h-full">
+    <div
+      className={clsx(
+        "relative w-full bg-[radial-gradient(circle_at_50%_35%,#102044_0%,#050b18_58%,#01030a_100%)] pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pl-[env(safe-area-inset-left)] md:h-full",
+        showSidebar && "md:pr-0",
+      )}
+    >
       <div ref={playerDockRef} className="contents">
         {isDocumentPiP && (
           <div className="@container-size/video relative flex aspect-video w-full min-h-0 items-center justify-center bg-[radial-gradient(circle_at_center,#102044_0%,#050b18_62%,#01030a_100%)] px-4 text-center font-medium text-blue-50/65 text-sm md:aspect-auto md:h-full md:text-base">
