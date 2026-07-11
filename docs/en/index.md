@@ -54,7 +54,7 @@ features:
         <h3>Fast Channel Change + Time-Shift Playback</h3>
       </header>
       <div class="demo-card__media">
-        <video controls muted playsinline preload="metadata" src="https://github.com/user-attachments/assets/ca1a332f-d6e7-4a1e-be88-92bef67758b3"></video>
+        <video controls muted preload="metadata" src="https://github.com/user-attachments/assets/ca1a332f-d6e7-4a1e-be88-92bef67758b3"></video>
       </div>
       <aside class="demo-callout">
         <span class="demo-callout__label">Tip</span>
@@ -68,7 +68,7 @@ features:
         <h3>Built-in Web Player</h3>
       </header>
       <div class="demo-card__media">
-        <video controls muted playsinline preload="metadata" src="https://github.com/user-attachments/assets/b32f134d-87ac-46d0-90fe-50ffa410069a"></video>
+        <video controls muted preload="metadata" src="https://github.com/user-attachments/assets/b32f134d-87ac-46d0-90fe-50ffa410069a"></video>
       </div>
       <aside class="demo-callout">
         <span class="demo-callout__label">Tip</span>
@@ -91,7 +91,7 @@ features:
         <h3>25 Concurrent 1080p Multicast Streams</h3>
       </header>
       <div class="demo-card__media">
-        <video controls muted playsinline preload="metadata" src="https://github.com/user-attachments/assets/d3dab0c0-03c4-453b-86ae-85406e5208eb"></video>
+        <video controls muted preload="metadata" src="https://github.com/user-attachments/assets/d3dab0c0-03c4-453b-86ae-85406e5208eb"></video>
       </div>
       <aside class="demo-callout">
         <span class="demo-callout__label">Performance</span>

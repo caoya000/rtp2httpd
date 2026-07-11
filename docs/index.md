@@ -54,7 +54,7 @@ features:
         <h3>快速换台 + 时移回看</h3>
       </header>
       <div class="demo-card__media">
-        <video controls muted playsinline preload="metadata" src="https://github.com/user-attachments/assets/ca1a332f-d6e7-4a1e-be88-92bef67758b3"></video>
+        <video controls muted preload="metadata" src="https://github.com/user-attachments/assets/ca1a332f-d6e7-4a1e-be88-92bef67758b3"></video>
       </div>
       <aside class="demo-callout">
         <span class="demo-callout__label">提示</span>
@@ -68,7 +68,7 @@ features:
         <h3>内置 Web 播放器</h3>
       </header>
       <div class="demo-card__media">
-        <video controls muted playsinline preload="metadata" src="https://github.com/user-attachments/assets/d3dab0c0-03c4-453b-86ae-85406e5208eb"></video>
+        <video controls muted preload="metadata" src="https://github.com/user-attachments/assets/d3dab0c0-03c4-453b-86ae-85406e5208eb"></video>
       </div>
       <aside class="demo-callout">
         <span class="demo-callout__label">提示</span>
@@ -91,7 +91,7 @@ features:
         <h3>25 条 1080p 组播流同时播放</h3>
       </header>
       <div class="demo-card__media">
-        <video controls muted playsinline preload="metadata" src="https://github.com/user-attachments/assets/9d531ab6-6c35-4c50-802a-71f88b6b22c5"></video>
+        <video controls muted preload="metadata" src="https://github.com/user-attachments/assets/9d531ab6-6c35-4c50-802a-71f88b6b22c5"></video>
       </div>
       <aside class="demo-callout">
         <span class="demo-callout__label">性能</span>
