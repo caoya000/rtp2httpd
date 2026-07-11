@@ -16,7 +16,9 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePlayerTranslation } from "../../hooks/use-player-translation";
 import type { Locale } from "../../lib/locale";
+import { createProgramTimeline, programProgressToWallClock } from "../../lib/program-timeline";
 import type { PlayerMediaInfo, PlayerRenderState } from "../../mpegts";
+import { mseToWallClock } from "../../mpegts/player/wall-clock";
 import type { Channel, EPGProgram } from "../../types/player";
 import { PLAYER_CONTROL_BUTTON_CLASS, PLAYER_OVERLAY_SURFACE_CLASS } from "./classnames";
 import { PlayerMediaBadges } from "./player-media-badges";
@@ -95,34 +97,54 @@ export function PlayerControls({
   // Check if any source on this channel supports catchup
   const isCatchupSupported = channel.sources.some((s) => s.catchup && s.catchupSource);
 
-  const { startTime, endTime, duration } = useMemo(() => {
-    if (!currentProgram) {
-      // No EPG data: use 3-hour rewind window
-      const now = new Date();
-      const threeHoursAgo = new Date(now.getTime() - 3 * 60 * 60 * 1000);
+  const programTimeline = useMemo(
+    () => (currentProgram ? createProgramTimeline(currentProgram, seekStartTime, currentTime) : null),
+    [currentProgram, seekStartTime, currentTime],
+  );
+
+  const fallbackRange = useMemo(() => {
+    if (currentProgram) return null;
+    const endTime = new Date();
+    return {
+      startTime: new Date(endTime.getTime() - 3 * 60 * 60 * 1000),
+      endTime,
+      duration: 3 * 60 * 60,
+    };
+  }, [currentProgram]);
+
+  const { startTime, endTime, duration, elapsedTime, progress } = useMemo(() => {
+    if (programTimeline) {
       return {
-        startTime: threeHoursAgo,
-        endTime: now,
-        duration: 3 * 60 * 60,
+        startTime: programTimeline.startTime,
+        endTime: programTimeline.endTime,
+        duration: programTimeline.durationSeconds,
+        elapsedTime: programTimeline.positionSeconds,
+        progress: programTimeline.progress * 100,
       };
     }
 
-    const startTime = currentProgram.start;
-    const endTime = currentProgram.end;
-    const duration = (endTime.getTime() - startTime.getTime()) / 1000;
+    if (fallbackRange) {
+      const playheadTime = mseToWallClock(currentTime, seekStartTime);
+      const elapsedTime = (playheadTime.getTime() - fallbackRange.startTime.getTime()) / 1000;
+      return {
+        ...fallbackRange,
+        elapsedTime,
+        progress: Math.min(100, Math.max(0, (elapsedTime / fallbackRange.duration) * 100)),
+      };
+    }
 
-    return { startTime, endTime, duration };
-  }, [currentProgram]);
+    if (currentProgram) {
+      return {
+        startTime: currentProgram.start,
+        endTime: currentProgram.end,
+        duration: 0,
+        elapsedTime: 0,
+        progress: 0,
+      };
+    }
 
-  const elapsedTime = useMemo(() => {
-    const currentAbsoluteTime = new Date(seekStartTime.getTime() + currentTime * 1000);
-    return (currentAbsoluteTime.getTime() - startTime.getTime()) / 1000;
-  }, [startTime, seekStartTime, currentTime]);
-
-  const progress = useMemo(() => {
-    if (duration === 0) return 0;
-    return Math.min(Math.max((elapsedTime / duration) * 100, 0), 100);
-  }, [duration, elapsedTime]);
+    return { startTime: seekStartTime, endTime: seekStartTime, duration: 0, elapsedTime: 0, progress: 0 };
+  }, [currentProgram, currentTime, fallbackRange, programTimeline, seekStartTime]);
 
   const formatTime = useCallback((date: Date, withSeconds = false) => {
     return date.toLocaleTimeString([], {
@@ -145,10 +167,11 @@ export function PlayerControls({
 
   const getTimeAtPosition = useCallback(
     (percentage: number): Date => {
+      if (programTimeline) return programProgressToWallClock(programTimeline, percentage / 100);
       const timestamp = startTime.getTime() + (duration * 1000 * percentage) / 100;
       return new Date(timestamp);
     },
-    [startTime, duration],
+    [startTime, duration, programTimeline],
   );
 
   const handleSeek = useCallback(
@@ -351,7 +374,7 @@ export function PlayerControls({
             )}
           </div>
 
-          <div className="ml-1.5 flex h-7 min-w-0 basis-0 flex-1 items-center overflow-hidden md:ml-2 md:h-12">
+          <div className="ml-1 mr-1 flex h-7 min-w-0 basis-0 flex-1 items-center overflow-hidden md:ml-2 md:mr-2 md:h-12">
             <PlayerMediaBadges
               mediaInfo={mediaInfo}
               locale={locale}
@@ -365,7 +388,7 @@ export function PlayerControls({
         <div className="flex shrink-0 items-center gap-0 sm:gap-0.5 md:gap-2">
           {/* Live/Catchup Indicator & Go Live Button */}
           {isLive ? (
-            <span className="flex items-center gap-1 whitespace-nowrap p-1 text-[11px] font-semibold tracking-wide text-white md:gap-1.5 md:p-2 md:text-sm">
+            <span className="flex items-center gap-1 whitespace-nowrap text-[11px] font-semibold tracking-wide text-white md:gap-1.5 md:text-sm">
               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-rose-400 shadow-[0_0_12px_rgba(251,113,133,0.85)] md:h-2 md:w-2" />
               {t("live")}
             </span>
