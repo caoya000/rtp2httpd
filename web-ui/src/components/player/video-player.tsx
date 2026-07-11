@@ -65,7 +65,8 @@ interface VideoPlayerProps {
   onChannelNavigate?: (target: "prev" | "next" | number) => void;
   showSidebar?: boolean;
   onToggleSidebar?: () => void;
-  onFullscreenToggle?: () => void;
+  isFullscreen: boolean;
+  onFullscreenToggle?: () => Promise<boolean> | boolean;
   seamlessSwitch?: boolean;
   autoDeinterlace?: boolean;
   pictureEnhancement?: boolean;
@@ -242,6 +243,7 @@ export function VideoPlayer({
   onChannelNavigate,
   showSidebar = true,
   onToggleSidebar,
+  isFullscreen,
   onFullscreenToggle,
   seamlessSwitch = true,
   autoDeinterlace = true,
@@ -1509,12 +1511,17 @@ export function VideoPlayer({
         webkitSupportsFullscreen?: boolean;
         webkitEnterFullscreen?: () => void;
       };
-      if (iosVideo.webkitSupportsFullscreen) {
-        iosVideo.webkitEnterFullscreen?.();
+      if (iosVideo.webkitSupportsFullscreen && iosVideo.webkitEnterFullscreen) {
+        try {
+          iosVideo.webkitEnterFullscreen();
+          return;
+        } catch {
+          // Fall through to Document Fullscreen and orientation lock fallbacks.
+        }
       }
-    } else if (onFullscreenToggle) {
-      onFullscreenToggle();
     }
+
+    await onFullscreenToggle?.();
   });
 
   const requestVideoPictureInPicture = useEffectEvent(async (video: HTMLVideoElement) => {
@@ -1871,6 +1878,7 @@ export function VideoPlayer({
             isMuted={isMuted}
             onMuteToggle={handleMuteToggle}
             onFullscreen={handleFullscreen}
+            isFullscreen={isFullscreen}
             showSidebar={showSidebar}
             onToggleSidebar={onToggleSidebar}
             isPiP={isPiP}

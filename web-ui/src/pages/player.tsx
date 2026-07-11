@@ -42,6 +42,30 @@ function getM3UIntegrationGuideUrl(locale: Locale) {
     : "https://rtp2httpd.com/guide/m3u-integration";
 }
 
+type LockableScreenOrientation = ScreenOrientation & {
+  lock?: (orientation: "landscape") => Promise<void>;
+};
+
+async function lockScreenToLandscape(): Promise<boolean> {
+  const orientation = screen.orientation as LockableScreenOrientation | undefined;
+  if (!orientation?.lock) return false;
+
+  try {
+    await orientation.lock("landscape");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function unlockScreenOrientation(): void {
+  try {
+    screen.orientation?.unlock();
+  } catch {
+    // The orientation may already have been unlocked when fullscreen ended.
+  }
+}
+
 function PlayerPage() {
   const { locale, setLocale } = useLocale("player-locale");
   const { theme, setTheme } = useTheme("player-theme");
@@ -63,6 +87,7 @@ function PlayerPage() {
   const [autoDeinterlace, setAutoDeinterlace] = useState(() => getAutoDeinterlace());
   const [pictureEnhancement, setPictureEnhancement] = useState(() => getPictureEnhancement());
   const pageContainerRef = useRef<HTMLDivElement>(null);
+  const isSimulatedFullscreenRef = useRef(false);
 
   // Track stream start time - the absolute time position when current stream started
   // For live mode: null (no seeking)
@@ -83,7 +108,14 @@ function PlayerPage() {
   // Track fullscreen state
   useEffect(() => {
     const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
+      const isDocumentFullscreen = !!document.fullscreenElement;
+      if (!isDocumentFullscreen && isSimulatedFullscreenRef.current) return;
+
+      setIsFullscreen(isDocumentFullscreen);
+      if (!isDocumentFullscreen) {
+        unlockScreenOrientation();
+        setShowSidebar(true);
+      }
     };
 
     document.addEventListener("fullscreenchange", handleFullscreenChange);
@@ -327,17 +359,53 @@ function PlayerPage() {
   }, []);
 
   // Handle fullscreen toggle
-  const handleFullscreenToggle = useCallback(() => {
-    if (pageContainerRef.current) {
-      if (document.fullscreenElement) {
-        document.exitFullscreen();
+  const handleFullscreenToggle = useCallback(async (): Promise<boolean> => {
+    const pageContainer = pageContainerRef.current;
+    if (!pageContainer) return false;
+
+    if (document.fullscreenElement) {
+      try {
+        await document.exitFullscreen();
+        unlockScreenOrientation();
         setShowSidebar(true);
-      } else {
-        pageContainerRef.current.requestFullscreen();
-        setShowSidebar(false);
+        return true;
+      } catch {
+        return false;
       }
     }
-  }, []);
+
+    if (isSimulatedFullscreenRef.current) {
+      isSimulatedFullscreenRef.current = false;
+      unlockScreenOrientation();
+      setIsFullscreen(false);
+      setShowSidebar(true);
+      return true;
+    }
+
+    try {
+      await pageContainer.requestFullscreen();
+      await lockScreenToLandscape();
+      setIsFullscreen(true);
+      setShowSidebar(false);
+      return true;
+    } catch {
+      if (await lockScreenToLandscape()) {
+        isSimulatedFullscreenRef.current = true;
+        setIsFullscreen(true);
+        setShowSidebar(false);
+        return true;
+      }
+
+      if (!isMobile) {
+        isSimulatedFullscreenRef.current = true;
+        setIsFullscreen(true);
+        setShowSidebar(false);
+        return true;
+      }
+
+      return false;
+    }
+  }, [isMobile]);
 
   const handleSeamlessSwitchChange = useCallback((enabled: boolean) => {
     setSeamlessSwitch(enabled);
@@ -419,6 +487,7 @@ function PlayerPage() {
             onChannelNavigate={handleChannelNavigate}
             showSidebar={showSidebar}
             onToggleSidebar={handleToggleSidebar}
+            isFullscreen={isFullscreen}
             onFullscreenToggle={handleFullscreenToggle}
             seamlessSwitch={seamlessSwitch}
             autoDeinterlace={autoDeinterlace}

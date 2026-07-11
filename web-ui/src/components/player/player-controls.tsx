@@ -13,7 +13,7 @@ import {
   Volume2,
   VolumeX,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { usePlayerTranslation } from "../../hooks/use-player-translation";
 import type { Locale } from "../../lib/locale";
 import { createProgramTimeline, programProgressToWallClock } from "../../lib/program-timeline";
@@ -51,6 +51,7 @@ interface PlayerControlsProps {
   isMuted: boolean;
   onMuteToggle: () => void;
   onFullscreen: () => void;
+  isFullscreen: boolean;
   // Picture-in-Picture controls
   isPiP?: boolean;
   isPiPSupported?: boolean;
@@ -81,6 +82,7 @@ export function PlayerControls({
   isMuted,
   onMuteToggle,
   onFullscreen,
+  isFullscreen,
   isPiP = false,
   isPiPSupported = false,
   onPiPToggle,
@@ -92,7 +94,6 @@ export function PlayerControls({
   const t = usePlayerTranslation(locale);
   const progressBarRef = useRef<HTMLDivElement>(null);
   const [hoverPosition, setHoverPosition] = useState<number | null>(null);
-  const [isFullscreen, setIsFullscreen] = useState(false);
 
   // Check if any source on this channel supports catchup
   const isCatchupSupported = channel.sources.some((s) => s.catchup && s.catchupSource);
@@ -224,18 +225,6 @@ export function PlayerControls({
     if (hoverPosition === null) return null;
     return getTimeAtPosition(hoverPosition);
   }, [hoverPosition, getTimeAtPosition]);
-
-  // Track fullscreen state
-  useEffect(() => {
-    const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
-    };
-
-    document.addEventListener("fullscreenchange", handleFullscreenChange);
-    return () => {
-      document.removeEventListener("fullscreenchange", handleFullscreenChange);
-    };
-  }, []);
 
   return (
     <div className="flex w-full flex-col gap-1 bg-[linear-gradient(to_top,rgba(2,8,23,0.98)_0%,rgba(8,22,51,0.9)_46%,rgba(21,27,69,0.48)_72%,transparent_100%)] px-1.5 pt-4 pb-1 md:gap-2 md:px-3 md:pt-9 md:pb-3">
