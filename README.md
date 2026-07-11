@@ -69,7 +69,7 @@ https://github.com/user-attachments/assets/ca1a332f-d6e7-4a1e-be88-92bef67758b3
 
 ### 内置播放器
 
-https://github.com/user-attachments/assets/efa2124b-329e-4ab0-a01d-81ee6f8998c4
+https://github.com/user-attachments/assets/d3dab0c0-03c4-453b-86ae-85406e5208eb
 
 > [!TIP]
 > 需要配置 M3U 播放列表后使用，通过浏览器访问 `http://<server:port>/player` 即可打开。

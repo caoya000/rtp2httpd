@@ -68,7 +68,7 @@ features:
         <h3>内置 Web 播放器</h3>
       </header>
       <div class="demo-card__media">
-        <video controls muted playsinline preload="metadata" src="https://github.com/user-attachments/assets/efa2124b-329e-4ab0-a01d-81ee6f8998c4"></video>
+        <video controls muted playsinline preload="metadata" src="https://github.com/user-attachments/assets/d3dab0c0-03c4-453b-86ae-85406e5208eb"></video>
       </div>
       <aside class="demo-callout">
         <span class="demo-callout__label">提示</span>
