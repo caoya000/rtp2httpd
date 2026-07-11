@@ -29,7 +29,7 @@ features:
     details: RTP 乱序恢复、Reed-Solomon FEC 前向纠错，消除网络抖动花屏
   - icon: 🎬
     title: 内置播放器
-    details: 现代化 Web 播放器，支持 EPG 和时移回看，桌面/移动端自适应
+    details: 现代化 Web 播放器，支持 EPG、时移回看、画质增强，桌面/移动端自适应
   - icon: 📷
     title: 频道快照
     details: 通过 HTTP 获取频道实时截图，可作为播放器频道预览图

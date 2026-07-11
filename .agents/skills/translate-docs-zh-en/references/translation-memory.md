@@ -37,6 +37,7 @@
 - 花屏 -> artifacts
 - 卡顿 -> stuttering
 - 后台 -> admin panel / admin interface
+- 画质增强 -> video enhancement
 
 ### China-specific Terms
 

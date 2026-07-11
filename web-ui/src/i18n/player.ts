@@ -121,7 +121,7 @@ const base: TranslationDict = {
   videoProcessing: "Video Processing",
   resolutionLimitHint: "1080p and below only",
   deinterlace: "Auto Deinterlacing",
-  pictureEnhancement: "Picture Enhancement",
+  pictureEnhancement: "Video Enhancement",
 };
 
 const zhHans: TranslationDict = {

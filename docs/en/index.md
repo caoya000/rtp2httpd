@@ -29,7 +29,7 @@ features:
     details: RTP reordering recovery, Reed-Solomon FEC forward error correction, eliminates network jitter artifacts
   - icon: 🎬
     title: Built-in Player
-    details: Modern web player with EPG and time-shift support, responsive for desktop/mobile
+    details: Modern web player with EPG, time-shift, and video enhancement support, responsive for desktop/mobile
   - icon: 📷
     title: Channel Snapshot
     details: Get real-time channel screenshots via HTTP, can be used as player channel preview
