@@ -5,11 +5,11 @@ import { usePlayerTranslation } from "../../hooks/use-player-translation";
 import type { Locale } from "../../lib/locale";
 import type { Channel } from "../../types/player";
 import {
+  PLAYER_CHANNEL_LIST_ITEM_CLASS,
   PLAYER_LIST_SURFACE_BASE_CLASS,
   PLAYER_LIST_SURFACE_DEFAULT_CLASS,
   PLAYER_LIST_SURFACE_HOVER_CLASS,
   PLAYER_LIST_SURFACE_SELECTED_CLASS,
-  PLAYER_SCROLL_LIST_ITEM_CLASS,
 } from "./classnames";
 import { PlayerSelectedGlassLayers } from "./player-selected-glass-layers";
 
@@ -37,7 +37,7 @@ const ChannelListItemComponent = forwardRef<HTMLButtonElement, ChannelListItemPr
         ref={ref}
         className={clsx(
           PLAYER_LIST_SURFACE_BASE_CLASS,
-          PLAYER_SCROLL_LIST_ITEM_CLASS,
+          PLAYER_CHANNEL_LIST_ITEM_CLASS,
           "group flex w-full cursor-pointer items-center gap-2 p-2 text-left",
           isCurrentChannel ? PLAYER_LIST_SURFACE_SELECTED_CLASS : PLAYER_LIST_SURFACE_DEFAULT_CLASS,
           !isCurrentChannel && PLAYER_LIST_SURFACE_HOVER_CLASS,
