@@ -18,7 +18,7 @@ import { usePlayerTranslation } from "../../hooks/use-player-translation";
 import type { Locale } from "../../lib/locale";
 import { createProgramTimeline, programProgressToWallClock } from "../../lib/program-timeline";
 import type { PlayerMediaInfo, PlayerRenderState } from "../../mpegts";
-import { mseToWallClock } from "../../mpegts/player/wall-clock";
+import { isNearLiveWallClock, type LiveSessionAnchor, mseToWallClock } from "../../mpegts/player/wall-clock";
 import type { Channel, EPGProgram } from "../../types/player";
 import { PLAYER_CONTROL_BUTTON_CLASS, PLAYER_OVERLAY_SURFACE_CLASS } from "./classnames";
 import { PlayerMediaBadges } from "./player-media-badges";
@@ -33,6 +33,8 @@ interface PlayerControlsProps {
   isLive: boolean;
   // Callback when user seeks to a new position
   onSeek: (seekTime: Date) => void;
+  // Keep the player controls visible while the user scrubs the timeline
+  onScrubbingChange: (isScrubbing: boolean) => void;
   // Locale for translations
   locale: Locale;
   // Current video playback time from video element (in seconds)
@@ -43,6 +45,7 @@ interface PlayerControlsProps {
   autoDeinterlace: boolean;
   // The absolute time of the last seek position (null for live mode)
   seekStartTime: Date;
+  liveSessionAnchor: LiveSessionAnchor | null;
   // Video element controls
   isPlaying: boolean;
   onPlayPause: () => void;
@@ -74,12 +77,14 @@ export function PlayerControls({
   currentProgram,
   isLive,
   onSeek,
+  onScrubbingChange,
   locale,
   currentTime,
   mediaInfo,
   renderState,
   autoDeinterlace,
   seekStartTime,
+  liveSessionAnchor,
   isPlaying,
   onPlayPause,
   volume,
@@ -99,6 +104,8 @@ export function PlayerControls({
 }: PlayerControlsProps) {
   const t = usePlayerTranslation(locale);
   const progressBarRef = useRef<HTMLDivElement>(null);
+  const activePointerIdRef = useRef<number | null>(null);
+  const [scrubPosition, setScrubPosition] = useState<number | null>(null);
   const [hoverPosition, setHoverPosition] = useState<number | null>(null);
 
   // Check if any source on this channel supports catchup
@@ -181,56 +188,97 @@ export function PlayerControls({
     [startTime, duration, programTimeline],
   );
 
-  const handleSeek = useCallback(
-    (e: React.MouseEvent | React.TouchEvent) => {
-      // Only allow seeking if catchup is supported
-      if (!isCatchupSupported) return;
-      if (!progressBarRef.current) return;
+  const getPositionFromClientX = useCallback((clientX: number): number | null => {
+    const progressBar = progressBarRef.current;
+    if (!progressBar) return null;
 
-      const rect = progressBarRef.current.getBoundingClientRect();
-      let clientX: number;
-
-      if ("touches" in e) {
-        clientX = e.touches[0].clientX;
-      } else {
-        clientX = e.clientX;
-      }
-
-      const percentage = Math.min(Math.max(((clientX - rect.left) / rect.width) * 100, 0), 100);
-      const seekTime = getTimeAtPosition(percentage);
-      onSeek(seekTime);
-    },
-    [isCatchupSupported, getTimeAtPosition, onSeek],
-  );
-
-  const handleMouseDown = useCallback(
-    (e: React.MouseEvent) => {
-      handleSeek(e);
-    },
-    [handleSeek],
-  );
-
-  const handleMouseMove = useCallback(
-    (e: React.MouseEvent) => {
-      // Only show hover effects if catchup is supported
-      if (!isCatchupSupported) return;
-      if (!progressBarRef.current) return;
-
-      const rect = progressBarRef.current.getBoundingClientRect();
-      const percentage = Math.min(Math.max(((e.clientX - rect.left) / rect.width) * 100, 0), 100);
-      setHoverPosition(percentage);
-    },
-    [isCatchupSupported],
-  );
-
-  const handleMouseLeave = useCallback(() => {
-    setHoverPosition(null);
+    const rect = progressBar.getBoundingClientRect();
+    if (rect.width === 0) return null;
+    return Math.min(Math.max(((clientX - rect.left) / rect.width) * 100, 0), 100);
   }, []);
 
-  const hoverTime = useMemo(() => {
-    if (hoverPosition === null) return null;
-    return getTimeAtPosition(hoverPosition);
-  }, [hoverPosition, getTimeAtPosition]);
+  const handlePointerDown = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (!isCatchupSupported || !event.isPrimary || activePointerIdRef.current !== null) return;
+      if (event.pointerType === "mouse" && event.button !== 0) return;
+
+      const position = getPositionFromClientX(event.clientX);
+      if (position === null) return;
+
+      event.preventDefault();
+      event.currentTarget.setPointerCapture(event.pointerId);
+      activePointerIdRef.current = event.pointerId;
+      setHoverPosition(null);
+      setScrubPosition(position);
+      onScrubbingChange(true);
+    },
+    [getPositionFromClientX, isCatchupSupported, onScrubbingChange],
+  );
+
+  const handlePointerMove = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (!isCatchupSupported) return;
+
+      const position = getPositionFromClientX(event.clientX);
+      if (position === null) return;
+
+      if (activePointerIdRef.current === event.pointerId) {
+        event.preventDefault();
+        setScrubPosition(position);
+      } else if (activePointerIdRef.current === null && event.pointerType !== "touch") {
+        setHoverPosition(position);
+      }
+    },
+    [getPositionFromClientX, isCatchupSupported],
+  );
+
+  const handlePointerUp = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (activePointerIdRef.current !== event.pointerId) return;
+
+      event.preventDefault();
+      const position = getPositionFromClientX(event.clientX);
+      activePointerIdRef.current = null;
+      setScrubPosition(null);
+      onScrubbingChange(false);
+
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+      if (position !== null) onSeek(getTimeAtPosition(position));
+    },
+    [getPositionFromClientX, getTimeAtPosition, onScrubbingChange, onSeek],
+  );
+
+  const cancelScrubbing = useCallback(
+    (pointerId: number) => {
+      if (activePointerIdRef.current !== pointerId) return;
+      activePointerIdRef.current = null;
+      setScrubPosition(null);
+      onScrubbingChange(false);
+    },
+    [onScrubbingChange],
+  );
+
+  const handlePointerCancel = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      cancelScrubbing(event.pointerId);
+    },
+    [cancelScrubbing],
+  );
+
+  const handlePointerLeave = useCallback(() => {
+    if (activePointerIdRef.current === null) setHoverPosition(null);
+  }, []);
+
+  const displayPosition = scrubPosition ?? progress;
+  const previewPosition = scrubPosition ?? hoverPosition;
+  const previewTime = useMemo(() => {
+    if (previewPosition === null) return null;
+    return getTimeAtPosition(previewPosition);
+  }, [previewPosition, getTimeAtPosition]);
+  const previewGoesLive = previewTime ? isNearLiveWallClock(previewTime, liveSessionAnchor, seekStartTime) : false;
+  const isScrubbing = scrubPosition !== null;
 
   return (
     <div
@@ -265,40 +313,51 @@ export function PlayerControls({
           tabIndex={isCatchupSupported ? 0 : -1}
           aria-valuemin={0}
           aria-valuemax={100}
-          aria-valuenow={Math.round(progress)}
+          aria-valuenow={Math.round(displayPosition)}
+          aria-valuetext={
+            isScrubbing && previewGoesLive ? t("goLive") : formatTime(getTimeAtPosition(displayPosition), true)
+          }
           aria-label={t("seekTo")}
           className={clsx(
-            "group relative h-1.5 rounded-full bg-blue-50/15 shadow-[inset_0_1px_3px_rgba(0,0,0,0.45)] ring-1 ring-white/10 transition-[height,box-shadow] duration-150 md:h-2",
+            "group relative h-1.5 touch-none select-none rounded-full bg-blue-50/15 shadow-[inset_0_1px_3px_rgba(0,0,0,0.45)] ring-1 ring-white/10 transition-[height,box-shadow] duration-150 before:absolute before:-inset-y-3 before:inset-x-0 before:content-[''] md:h-2",
             "[@container_video_(max-height:_320px)]:h-1 md:[@container_video_(max-height:_320px)]:h-1",
             isCatchupSupported
               ? "cursor-pointer hover:h-2 hover:shadow-[0_0_20px_rgba(59,130,246,0.16),inset_0_1px_3px_rgba(0,0,0,0.45)] md:hover:h-3"
               : "cursor-default",
+            isScrubbing &&
+              "h-2 [@container_video_(max-height:_320px)]:h-2 md:h-3 md:[@container_video_(max-height:_320px)]:h-2",
           )}
-          onMouseDown={isCatchupSupported ? handleMouseDown : undefined}
-          onMouseMove={isCatchupSupported ? handleMouseMove : undefined}
-          onMouseLeave={isCatchupSupported ? handleMouseLeave : undefined}
+          onPointerDown={isCatchupSupported ? handlePointerDown : undefined}
+          onPointerMove={isCatchupSupported ? handlePointerMove : undefined}
+          onPointerUp={isCatchupSupported ? handlePointerUp : undefined}
+          onPointerCancel={isCatchupSupported ? handlePointerCancel : undefined}
+          onLostPointerCapture={isCatchupSupported ? handlePointerCancel : undefined}
+          onPointerLeave={isCatchupSupported ? handlePointerLeave : undefined}
         >
           <div
-            className="absolute top-0 left-0 h-full rounded-full bg-[linear-gradient(90deg,#3b82f6_0%,#38bdf8_52%,#6366f1_100%)] shadow-[0_0_18px_rgba(59,130,246,0.4)] transition-[width] duration-150"
-            style={{ width: `${progress}%` }}
+            className={clsx(
+              "absolute top-0 left-0 h-full rounded-full bg-[linear-gradient(90deg,#3b82f6_0%,#38bdf8_52%,#6366f1_100%)] shadow-[0_0_18px_rgba(59,130,246,0.4)]",
+              !isScrubbing && "transition-[width] duration-150",
+            )}
+            style={{ width: `${displayPosition}%` }}
           />
 
-          {isCatchupSupported && hoverPosition !== null && (
+          {isCatchupSupported && previewPosition !== null && (
             <>
               <div
                 className="absolute top-0 h-full w-0.5 bg-blue-50/80 shadow-[0_0_8px_rgba(147,197,253,0.7)]"
-                style={{ left: `${hoverPosition}%` }}
+                style={{ left: `${previewPosition}%` }}
               />
-              {hoverTime && (
+              {previewTime && (
                 <div
                   className={clsx(
                     PLAYER_OVERLAY_SURFACE_CLASS,
-                    "absolute bottom-full mb-2 -translate-x-1/2 whitespace-nowrap rounded-lg px-2.5 py-1 text-xs font-medium text-blue-50",
+                    "absolute bottom-full mb-4 -translate-x-1/2 whitespace-nowrap rounded-lg px-2.5 py-1 text-xs font-medium text-blue-50 md:mb-2",
                   )}
-                  style={{ left: `${hoverPosition}%` }}
+                  style={{ left: `clamp(2.5rem, ${previewPosition}%, calc(100% - 2.5rem))` }}
                 >
                   <PlayerSelectedGlassLayers />
-                  <span className="relative z-10">{formatTime(hoverTime, true)}</span>
+                  <span className="relative z-10">{previewGoesLive ? t("goLive") : formatTime(previewTime, true)}</span>
                 </div>
               )}
             </>
@@ -306,10 +365,13 @@ export function PlayerControls({
 
           <div
             className={clsx(
-              "absolute top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-blue-300 shadow-[0_0_16px_rgba(147,197,253,0.75)] transition-[left,width,height] duration-150 md:h-3 md:w-3",
-              isCatchupSupported && "group-hover:h-3 group-hover:w-3 md:group-hover:h-4 md:group-hover:w-4",
+              "absolute top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-blue-300 shadow-[0_0_16px_rgba(147,197,253,0.75)]",
+              isScrubbing ? "h-4 w-4" : "h-2.5 w-2.5 transition-[left,width,height] duration-150 md:h-3 md:w-3",
+              isCatchupSupported &&
+                !isScrubbing &&
+                "group-hover:h-3 group-hover:w-3 md:group-hover:h-4 md:group-hover:w-4",
             )}
-            style={{ left: `${progress}%` }}
+            style={{ left: `${displayPosition}%` }}
           />
         </div>
       )}
