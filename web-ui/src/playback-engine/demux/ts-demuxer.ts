@@ -956,10 +956,12 @@ class TSDemuxer {
             const registration = String.fromCharCode(...Array.from(data.subarray(offset + 2, offset + 2 + length)));
             if (registration === "AC-3" && !already_has_audio) {
               pmt.common_pids.ac3 = elementary_PID; // DVB AC-3
+            } else if (registration === "BSSD" && !already_has_audio) {
+              pmt.common_pids.ac3 = elementary_PID; // 【新增】支持 BSSD
             } else if (registration === "EC-3" && !already_has_audio) {
               pmt.common_pids.eac3 = elementary_PID; // DVB EAC-3
             }
-          } else if (tag === 0x82) {
+          } else if (tag === 0x82 || tag === 0x6a || tag === 0x81) {
             pmt.common_pids.ac3 = elementary_PID;
           } else if (tag === 0x7a) {
             pmt.common_pids.eac3 = elementary_PID;

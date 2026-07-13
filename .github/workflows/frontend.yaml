@@ -1,0 +1,90 @@
+name: Build Frontend
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'The git tag to build'
+        required: true
+        type: string
+  release:
+    types:
+      - published
+
+env:
+  RELEASE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || github.event.inputs.tag }}
+
+jobs:
+  prepare-lockfile:
+    name: Prepare pnpm lockfile
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+
+      - name: Set up Corepack
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.25.0 --activate
+
+      - name: Install dependencies and update lockfile
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Upload pnpm lockfile
+        uses: actions/upload-artifact@v4
+        with:
+          name: pnpm-lockfile
+          path: pnpm-lock.yaml
+          if-no-files-found: error
+
+  frontend:
+    name: Build Frontend
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    needs: prepare-lockfile
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Download pnpm lockfile
+        uses: actions/download-artifact@v4
+        with:
+          name: pnpm-lockfile
+          path: .
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+
+      - name: Set up Corepack
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.25.0 --activate
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build frontend
+        run: pnpm run web-ui:build
+
+      - name: Upload page artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-pages
+          path: |
+            src/embedded_web_data.h
+          if-no-files-found: error
