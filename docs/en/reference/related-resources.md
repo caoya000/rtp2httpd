@@ -32,22 +32,6 @@ If you are new to setting up IPTV multicast forwarding services and unfamiliar w
 - [Bypass Router IPTV Plugin Usage Guide](https://www.bilibili.com/video/BV1ioiKBNE8t/)
 - [Multicast-to-Unicast Series Episode 2: Use rtp2httpd Plugin to Watch IPTV on All Household Devices](https://www.bilibili.com/video/BV1Zhr4B3ELy/)
 
-## Firmware Ecosystem
-
-The following firmware distributions have rtp2httpd built in, or offer it for direct installation from their app stores or official package repositories.
-
-> [!IMPORTANT]
-> To ensure stability, firmware distributions typically ship or list rtp2httpd versions behind the official latest release. If you want the latest version, it is recommended to install rtp2httpd using the [officially supported installation methods](../guide/installation.md).
-
-- [fnOS](https://www.fnnas.com) (rtp2httpd available in the App Center)
-- [iStoreOS](https://site.istoreos.com) (rtp2httpd available in iStore)
-- [iKuai](https://www.ikuai8.com) (rtp2httpd available on the App Market)
-- [LCMD MicroServer](https://lazycat.cloud) (rtp2httpd available in the App Store)
-- [cooluc's OpenWrt](https://github.com/sbwml/builder) (rtp2httpd built in)
-- [ImmortalWrt](https://github.com/immortalwrt/immortalwrt) (added to the official repository)
-- [AutoBuildImmortalWrt](https://github.com/wukongdaily/AutoBuildImmortalWrt) (rtp2httpd built into [store](https://github.com/wukongdaily/store), easy to build)
-- [Pandora QWRT for K2P](https://www.right.com.cn/forum/forum.php?mod=viewthread&tid=8346913&fromuid=402348) (rtp2httpd built in)
-
 ## Related Software
 
 ### IPTV Players

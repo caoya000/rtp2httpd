@@ -8,6 +8,22 @@ OpenWrt is the best runtime environment for rtp2httpd. In mainland China, you us
 
 See [Quick Start](/en/guide/quick-start) for details.
 
+## Built-in Firmware and Platforms
+
+The following firmware distributions and platforms include rtp2httpd, or offer it for direct installation from their app stores or official package repositories.
+
+> [!IMPORTANT]
+> To ensure stability, bundled or listed rtp2httpd versions usually lag behind the latest official release. If you want to stay up to date, consider using another installation method.
+
+- [fnOS](https://www.fnnas.com): rtp2httpd is available in the App Center and integrates deeply with the fnOS desktop, Unified Gateway, and FN Connect
+- [iStoreOS](https://site.istoreos.com): rtp2httpd is available in iStore
+- [iKuai](https://www.ikuai8.com): rtp2httpd is available in the App Market
+- [LCMD MicroServer](https://lazycat.cloud): rtp2httpd is available in the App Store
+- [cooluc's OpenWrt](https://github.com/sbwml/builder): rtp2httpd is built in
+- [ImmortalWrt](https://github.com/immortalwrt/immortalwrt): rtp2httpd has been added to the official repository
+- [AutoBuildImmortalWrt](https://github.com/wukongdaily/AutoBuildImmortalWrt): rtp2httpd is built into [store](https://github.com/wukongdaily/store) for easy builds
+- [Pandora QWRT for K2P](https://www.right.com.cn/forum/forum.php?mod=viewthread&tid=8346913&fromuid=402348): rtp2httpd is built in
+
 ## Static Binary Deployment
 
 Download the static binary file `rtp2httpd-<version>-<arch>` for your architecture from the [Releases](https://github.com/stackia/rtp2httpd/releases) page, upload to your device, `chmod +x` and run.
