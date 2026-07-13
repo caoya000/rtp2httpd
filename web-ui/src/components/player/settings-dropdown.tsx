@@ -1,8 +1,15 @@
 import { Settings } from "lucide-react";
-import { memo } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { usePlayerTranslation } from "../../hooks/use-player-translation";
 import { LOCALE_OPTIONS, type Locale } from "../../lib/locale";
-import { THEME_LABEL_KEYS, THEME_MODES, type ThemeMode } from "../../types/ui";
+import {
+  PLAYER_APPEARANCE_LABEL_KEYS,
+  PLAYER_APPEARANCES,
+  type PlayerAppearance,
+  THEME_LABEL_KEYS,
+  THEME_MODES,
+  type ThemeMode,
+} from "../../types/ui";
 import { LabeledSwitch } from "../ui/labeled-switch";
 import { SelectBox } from "../ui/select-box";
 
@@ -11,137 +18,198 @@ interface SettingsDropdownProps {
   onLocaleChange: (locale: Locale) => void;
   theme: ThemeMode;
   onThemeChange: (theme: ThemeMode) => void;
+  appearance: PlayerAppearance;
+  onAppearanceChange: (appearance: PlayerAppearance) => void;
   seamlessSwitch: boolean;
   onSeamlessSwitchChange: (enabled: boolean) => void;
   autoDeinterlace: boolean;
   onAutoDeinterlaceChange: (enabled: boolean) => void;
   pictureEnhancement: boolean;
   onPictureEnhancementChange: (enabled: boolean) => void;
+  showSeamlessSwitch?: boolean;
+  showVideoProcessing?: boolean;
 }
 
-const SETTING_LABEL_CLASS = "mb-1.5 block px-0.5 font-medium text-slate-500 text-xs leading-4 dark:text-blue-50/55";
+const SETTING_LABEL_CLASS = "mb-1 block px-0.5 font-medium text-slate-500 text-xs leading-4 dark:text-blue-50/55";
 const SETTING_SWITCH_CLASS = "min-h-6 gap-3 px-0.5";
 const SETTING_SWITCH_LABEL_CLASS = "flex-1 font-medium text-slate-600 text-xs leading-4 dark:text-blue-50/65";
 const SETTING_SWITCH_CONTROL_CLASS =
   "border-blue-900/10 bg-slate-200/75 shadow-inner data-[state=checked]:border-blue-300/35 data-[state=checked]:bg-blue-500 data-[state=checked]:shadow-[0_0_16px_rgba(59,130,246,0.24)] dark:border-blue-100/10 dark:bg-slate-800/80";
 const SETTINGS_POPOVER_ID = "player-settings-popover";
 
+interface SettingSelectProps<Value extends string> {
+  id: string;
+  label: string;
+  value: Value;
+  options: readonly { value: Value; label: string }[];
+  onChange: (value: Value) => void;
+}
+
+function SettingSelect<Value extends string>({ id, label, value, options, onChange }: SettingSelectProps<Value>) {
+  return (
+    <div>
+      <label htmlFor={id} className={SETTING_LABEL_CLASS}>
+        {label}
+      </label>
+      <SelectBox
+        id={id}
+        value={value}
+        onChange={(event) => onChange(event.target.value as Value)}
+        variant="sm"
+        containerClassName="w-full min-w-0"
+        aria-label={label}
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </SelectBox>
+    </div>
+  );
+}
+
 function SettingsDropdownComponent({
   locale,
   onLocaleChange,
   theme,
   onThemeChange,
+  appearance,
+  onAppearanceChange,
   seamlessSwitch,
   onSeamlessSwitchChange,
   autoDeinterlace,
   onAutoDeinterlaceChange,
   pictureEnhancement,
   onPictureEnhancementChange,
+  showSeamlessSwitch = true,
+  showVideoProcessing = true,
 }: SettingsDropdownProps) {
   const t = usePlayerTranslation(locale);
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const themeOptions = THEME_MODES.map((value) => ({ value, label: t(THEME_LABEL_KEYS[value]) }));
+  const appearanceOptions = PLAYER_APPEARANCES.map((value) => ({
+    value,
+    label: t(PLAYER_APPEARANCE_LABEL_KEYS[value]),
+  }));
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!dropdownRef.current?.contains(event.target as Node)) setIsOpen(false);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setIsOpen(false);
+      triggerRef.current?.focus();
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isOpen]);
 
   return (
-    <div className="size-8 [anchor-name:--player-settings-trigger] md:size-9">
+    <div ref={dropdownRef} className="relative size-8 md:size-9">
       <button
+        ref={triggerRef}
         type="button"
-        popoverTarget={SETTINGS_POPOVER_ID}
+        onClick={() => setIsOpen((open) => !open)}
+        aria-haspopup="dialog"
+        aria-expanded={isOpen}
+        aria-controls={SETTINGS_POPOVER_ID}
         className="flex size-8 cursor-pointer items-center justify-center rounded-xl border border-transparent p-0 text-slate-500 transition-[color,background-color,border-color,box-shadow,transform] motion-reduce:transition-none hover:border-blue-400/20 hover:bg-blue-400/10 hover:text-blue-700 hover:shadow-[0_0_18px_rgba(59,130,246,0.1)] motion-safe:active:scale-95 dark:text-slate-400 dark:hover:text-blue-200 md:size-9"
         title={t("settings")}
       >
         <Settings className="h-5 w-5" />
       </button>
 
-      <div
-        id={SETTINGS_POPOVER_ID}
-        popover="auto"
-        className="fixed inset-auto m-0 mt-1 w-52 max-w-[calc(100vw-1rem)] rounded-2xl border border-blue-900/12 bg-[linear-gradient(145deg,rgba(255,255,255,0.9),rgba(238,242,255,0.82))] p-0 shadow-[0_20px_55px_rgba(30,64,175,0.18),inset_0_1px_0_rgba(255,255,255,0.82)] [position-anchor:--player-settings-trigger] [right:anchor(right)] [top:anchor(bottom)] backdrop-blur-2xl dark:border-blue-100/15 dark:bg-[linear-gradient(145deg,rgba(7,20,43,0.94),rgba(26,24,72,0.9))] dark:shadow-[0_22px_60px_rgba(1,7,24,0.62),inset_0_1px_0_rgba(255,255,255,0.08)]"
-      >
-        <div className="space-y-3.5 p-3">
-          {/* Language Select */}
-          <div>
-            <label htmlFor="player-settings-locale" className={SETTING_LABEL_CLASS}>
-              {t("language")}
-            </label>
-            <SelectBox
+      {isOpen && (
+        <div
+          id={SETTINGS_POPOVER_ID}
+          role="dialog"
+          aria-label={t("settings")}
+          className="player-performance-panel-background absolute top-full right-0 z-50 mt-1 max-h-[calc(100vh-4rem)] w-52 max-w-[calc(100vw-1rem)] overflow-y-auto rounded-2xl border border-blue-900/12 bg-[linear-gradient(145deg,rgba(255,255,255,0.9),rgba(238,242,255,0.82))] p-0 shadow-[0_20px_55px_rgba(30,64,175,0.18),inset_0_1px_0_rgba(255,255,255,0.82)] backdrop-blur-2xl dark:border-blue-100/15 dark:bg-[linear-gradient(145deg,rgba(7,20,43,0.94),rgba(26,24,72,0.9))] dark:shadow-[0_22px_60px_rgba(1,7,24,0.62),inset_0_1px_0_rgba(255,255,255,0.08)]"
+        >
+          <div className="space-y-2.5 p-2.5">
+            <SettingSelect
               id="player-settings-locale"
+              label={t("language")}
               value={locale}
-              onChange={(e) => onLocaleChange(e.target.value as Locale)}
-              containerClassName="w-full min-w-0"
-              aria-label={t("language")}
-            >
-              {LOCALE_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </SelectBox>
-          </div>
-
-          {/* Theme Select */}
-          <div>
-            <label htmlFor="player-settings-theme" className={SETTING_LABEL_CLASS}>
-              {t("theme")}
-            </label>
-            <SelectBox
+              options={LOCALE_OPTIONS}
+              onChange={onLocaleChange}
+            />
+            <SettingSelect
               id="player-settings-theme"
+              label={t("theme")}
               value={theme}
-              onChange={(e) => onThemeChange(e.target.value as ThemeMode)}
-              containerClassName="w-full min-w-0"
-              aria-label={t("theme")}
-            >
-              {THEME_MODES.map((option) => (
-                <option key={option} value={option}>
-                  {t(THEME_LABEL_KEYS[option])}
-                </option>
-              ))}
-            </SelectBox>
-          </div>
+              options={themeOptions}
+              onChange={onThemeChange}
+            />
+            <SettingSelect
+              id="player-settings-appearance"
+              label={t("appearance")}
+              value={appearance}
+              options={appearanceOptions}
+              onChange={onAppearanceChange}
+            />
 
-          {/* Seamless channel/source switch (dual-slot preload) */}
-          <LabeledSwitch
-            label={t("seamlessSwitch")}
-            checked={seamlessSwitch}
-            onCheckedChange={onSeamlessSwitchChange}
-            className={SETTING_SWITCH_CLASS}
-            labelClassName={SETTING_SWITCH_LABEL_CLASS}
-            switchClassName={SETTING_SWITCH_CONTROL_CLASS}
-          />
+            {/* Seamless channel/source switch (dual-slot preload) */}
+            {showSeamlessSwitch && (
+              <LabeledSwitch
+                label={t("seamlessSwitch")}
+                checked={seamlessSwitch}
+                onCheckedChange={onSeamlessSwitchChange}
+                className={SETTING_SWITCH_CLASS}
+                labelClassName={SETTING_SWITCH_LABEL_CLASS}
+                switchClassName={SETTING_SWITCH_CONTROL_CLASS}
+              />
+            )}
 
-          {/* Video processing group: deinterlace + picture enhancement.
+            {/* Video processing group: deinterlace + picture enhancement.
                 Both only take effect for 1080p-and-below content, so the
                 resolution caveat is stated once as a shared group note. */}
-          <div className="space-y-3 border-blue-900/10 border-t pt-3.5 dark:border-blue-100/10">
-            <div className="px-0.5">
-              <span className="block font-medium text-slate-600 text-xs leading-4 dark:text-blue-50/65">
-                {t("videoProcessing")}
-              </span>
-              <span className="mt-0.5 block text-[11px] text-slate-400 leading-4 dark:text-blue-50/35">
-                {t("resolutionLimitHint")}
-              </span>
-            </div>
+            {showVideoProcessing && (
+              <div className="space-y-2.5 border-blue-900/10 border-t pt-2.5 dark:border-blue-100/10">
+                <div className="px-0.5">
+                  <span className="block font-medium text-slate-600 text-xs leading-4 dark:text-blue-50/65">
+                    {t("videoProcessing")}
+                  </span>
+                  <span className="mt-0.5 block text-[11px] text-slate-400 leading-4 dark:text-blue-50/35">
+                    {t("resolutionLimitHint")}
+                  </span>
+                </div>
 
-            {/* Automatic deinterlacing (heuristic detection, ≤1080 content only) */}
-            <LabeledSwitch
-              label={t("deinterlace")}
-              checked={autoDeinterlace}
-              onCheckedChange={onAutoDeinterlaceChange}
-              className={SETTING_SWITCH_CLASS}
-              labelClassName={SETTING_SWITCH_LABEL_CLASS}
-              switchClassName={SETTING_SWITCH_CONTROL_CLASS}
-            />
+                {/* Automatic deinterlacing (heuristic detection, ≤1080 content only) */}
+                <LabeledSwitch
+                  label={t("deinterlace")}
+                  checked={autoDeinterlace}
+                  onCheckedChange={onAutoDeinterlaceChange}
+                  className={SETTING_SWITCH_CLASS}
+                  labelClassName={SETTING_SWITCH_LABEL_CLASS}
+                  switchClassName={SETTING_SWITCH_CONTROL_CLASS}
+                />
 
-            {/* Picture enhancement (WebGL post-processing inside the render gate) */}
-            <LabeledSwitch
-              label={t("pictureEnhancement")}
-              checked={pictureEnhancement}
-              onCheckedChange={onPictureEnhancementChange}
-              className={SETTING_SWITCH_CLASS}
-              labelClassName={SETTING_SWITCH_LABEL_CLASS}
-              switchClassName={SETTING_SWITCH_CONTROL_CLASS}
-            />
+                {/* Picture enhancement (WebGL post-processing inside the render gate) */}
+                <LabeledSwitch
+                  label={t("pictureEnhancement")}
+                  checked={pictureEnhancement}
+                  onCheckedChange={onPictureEnhancementChange}
+                  className={SETTING_SWITCH_CLASS}
+                  labelClassName={SETTING_SWITCH_LABEL_CLASS}
+                  switchClassName={SETTING_SWITCH_CONTROL_CLASS}
+                />
+              </div>
+            )}
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

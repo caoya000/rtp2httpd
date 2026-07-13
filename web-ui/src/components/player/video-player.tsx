@@ -26,16 +26,17 @@ import { buildCatchupSegments } from "../../lib/m3u-parser";
 import { getMuted, getVolume, saveMuted, saveVolume } from "../../lib/player-storage";
 import { createProgramTimeline, programPositionToWallClock } from "../../lib/program-timeline";
 import {
-  createPlayer,
+  createPlaybackBackend,
   defaultConfig,
-  isSupported,
-  type Player,
+  getPlaybackBackendKind,
+  isMSEPlaybackSupported,
+  type PlaybackBackend,
   type PlayerError,
   PlayerErrors,
   type PlayerMediaInfo,
   type PlayerRenderState,
   type PlayerSegment,
-} from "../../mpegts";
+} from "../../playback-engine";
 import {
   createLiveSessionAnchor,
   goLiveTargetMse,
@@ -43,8 +44,8 @@ import {
   type LiveSessionAnchor,
   mseToWallClock,
   wallClockToMse,
-} from "../../mpegts/player/wall-clock";
-import mp2WasmUrl from "../../mpegts/wasm/minimp3/mp2_decoder.wasm?url";
+} from "../../playback-engine/timeline/wall-clock";
+import mp2WasmUrl from "../../playback-engine/wasm/minimp3/mp2_decoder.wasm?url";
 import type { Channel, EPGProgram } from "../../types/player";
 import { PLAYER_OVERLAY_SURFACE_CLASS } from "./classnames";
 import { PlayerControls } from "./player-controls";
@@ -93,7 +94,7 @@ type SlotId = "a" | "b";
 type PendingTransition = {
   gen: number;
   slotId: SlotId;
-  player: Player;
+  player: PlaybackBackend;
   startedAt: number;
 };
 
@@ -237,7 +238,7 @@ function PlayerTopLeftOverlay({
             </span>
             <div className="relative h-3 w-3 shrink-0 md:h-3.5 md:w-3.5 md:[@container_video_(max-height:_320px)]:h-3 md:[@container_video_(max-height:_320px)]:w-3">
               <div className="absolute inset-0 rounded-full border border-blue-100/25" />
-              <div className="absolute inset-0 animate-spin rounded-full border border-blue-200 border-t-transparent shadow-[0_0_8px_rgba(147,197,253,0.5)]" />
+              <div className="player-performance-loading-spinner absolute inset-0 animate-spin rounded-full border border-blue-200 border-t-transparent shadow-[0_0_8px_rgba(147,197,253,0.5)]" />
             </div>
             <span className="min-w-0 truncate text-blue-50/70 text-xs md:text-sm md:[@container_video_(max-height:_320px)]:text-xs">
               {loadingText}
@@ -274,6 +275,7 @@ export function VideoPlayer({
   onPlaybackStarted,
 }: VideoPlayerProps) {
   const t = usePlayerTranslation(locale);
+  const playbackBackendKind = getPlaybackBackendKind();
   const programTimeline = useMemo(
     () => (currentProgram ? createProgramTimeline(currentProgram, streamStartTime, currentVideoTime) : null),
     [currentProgram, streamStartTime, currentVideoTime],
@@ -296,8 +298,8 @@ export function VideoPlayer({
   const slotBVideoRef = useRef<HTMLVideoElement>(null);
   const slotACanvasRef = useRef<HTMLCanvasElement>(null);
   const slotBCanvasRef = useRef<HTMLCanvasElement>(null);
-  const slotAPlayerRef = useRef<Player | null>(null);
-  const slotBPlayerRef = useRef<Player | null>(null);
+  const slotAPlayerRef = useRef<PlaybackBackend | null>(null);
+  const slotBPlayerRef = useRef<PlaybackBackend | null>(null);
   const slotLiveStateRef = useRef<Record<SlotId, boolean>>({ a: true, b: true });
   const activeSlotIdRef = useRef<SlotId>("a");
   const [visibleSlotId, setVisibleSlotId] = useState<SlotId>("a");
@@ -341,7 +343,7 @@ export function VideoPlayer({
   const [showLoading, setShowLoading] = useState(false);
   const loadingTimeoutRef = useRef<number>(0);
   const [error, setError] = useState<PlaybackErrorDisplay | null>(() =>
-    isSupported() ? null : { message: t("mseNotSupported") },
+    playbackBackendKind === "native" || isMSEPlaybackSupported() ? null : { message: t("mseNotSupported") },
   );
   const [warning, setWarning] = useState<PlaybackErrorDisplay | null>(null);
   const [volume, setVolume] = useState(() => getVolume());
@@ -393,20 +395,18 @@ export function VideoPlayer({
   const handleRelativeSeek = useEffectEvent((deltaSeconds: number) => {
     const activePlayer = getActivePlayer();
     if (!activePlayer) return;
-    const video = getActiveVideo();
-    if (!video) return;
-
-    shouldAutoPlayRef.current = !video.paused;
+    const state = activePlayer.getState();
+    shouldAutoPlayRef.current = !state.paused;
     if (playMode === "live") {
       activePlayer.setLiveSync(false);
     }
-    // Relative to current playback position on the MSE timeline (not wall clock)
-    activePlayer.seek(video.currentTime + deltaSeconds);
+    activePlayer.seek(state.currentTime + deltaSeconds);
   });
 
-  const calibrateLiveSession = useEffectEvent((video: HTMLVideoElement) => {
-    const origin = new Date(Date.now() - video.currentTime * 1000);
-    const anchor = createLiveSessionAnchor(video.currentTime);
+  const calibrateLiveSession = useEffectEvent((player: PlaybackBackend) => {
+    const currentTime = player.getState().currentTime;
+    const origin = new Date(Date.now() - currentTime * 1000);
+    const anchor = createLiveSessionAnchor(currentTime);
     setLiveSessionAnchor(anchor);
     onStreamStartTimeChange?.(origin);
     getActivePlayer()?.setLiveSessionAnchor(anchor);
@@ -432,22 +432,21 @@ export function VideoPlayer({
   const handleSeek = useEffectEvent((seekTime: Date) => {
     const activePlayer = getActivePlayer();
     if (!activePlayer) return;
-    const video = getActiveVideo();
     const goingLive = isNearLiveEdge(seekTime);
 
     if (goingLive) {
       userPausedRef.current = false;
       if (playMode === "live") {
         goLiveToSessionEdge();
-        video?.play()?.catch(ignoreInterruptedPlayError);
+        activePlayer.play().catch(ignoreInterruptedPlayError);
         return;
       }
-      shouldAutoPlayRef.current = !video?.paused;
+      shouldAutoPlayRef.current = !activePlayer.getState().paused;
       onSeek?.(new Date(), true);
       return;
     }
 
-    shouldAutoPlayRef.current = !video?.paused;
+    shouldAutoPlayRef.current = !activePlayer.getState().paused;
     if (playMode === "live") {
       activePlayer.setLiveSync(false);
       seekLiveByWallClock(seekTime);
@@ -463,14 +462,14 @@ export function VideoPlayer({
   });
 
   const togglePlayPause = useEffectEvent(() => {
-    const video = getActiveVideo();
-    if (video) {
-      if (video.paused) {
+    const player = getActivePlayer();
+    if (player) {
+      if (player.getState().paused) {
         userPausedRef.current = false;
-        video.play().catch(ignoreInterruptedPlayError);
+        player.play().catch(ignoreInterruptedPlayError);
       } else {
         userPausedRef.current = true;
-        video.pause();
+        player.pause();
       }
     }
   });
@@ -601,7 +600,7 @@ export function VideoPlayer({
     pendingTransitionRef.current = null;
   });
 
-  const applyPlayerSettings = useEffectEvent((player: Player) => {
+  const applyPlayerSettings = useEffectEvent((player: PlaybackBackend) => {
     player.setLiveSync(playMode === "live");
     if (liveSessionAnchor && wallClockCalibratedRef.current) {
       player.setLiveSessionAnchor(liveSessionAnchor);
@@ -621,26 +620,22 @@ export function VideoPlayer({
     cancelPendingTransition();
   });
 
-  const stopSlotIfPlayerStillMatches = useEffectEvent((slotId: SlotId, player: Player) => {
+  const stopSlotIfPlayerStillMatches = useEffectEvent((slotId: SlotId, player: PlaybackBackend) => {
     if (slotPlayerRef(slotId).current !== player) return;
     player.stop();
   });
 
   const completeTransition = useEffectEvent((newActiveId: SlotId) => {
     const oldActiveId = getActiveSlotId();
-    const oldVideo = slotVideoRef(oldActiveId).current;
     const oldPlayer = slotPlayerRef(oldActiveId).current;
-    const savedVolume = oldVideo?.volume ?? volume;
-    const savedMuted = oldVideo?.muted ?? isMuted;
-
-    const newVideo = slotVideoRef(newActiveId).current;
-    if (newVideo) {
-      newVideo.volume = savedVolume;
-      newVideo.muted = savedMuted;
-    }
+    const oldState = oldPlayer?.getState();
+    const savedVolume = oldState?.volume ?? volume;
+    const savedMuted = oldState?.muted ?? isMuted;
 
     const newPlayer = slotPlayerRef(newActiveId).current;
     if (newPlayer) {
+      newPlayer.setVolume(savedVolume);
+      newPlayer.setMuted(savedMuted);
       applyPlayerSettings(newPlayer);
     }
 
@@ -655,7 +650,7 @@ export function VideoPlayer({
     }
   });
 
-  /** Finish a pending channel switch (success or failure) by hard-switching to the new slot. */
+  /** Commit a pending channel switch after the new slot has started successfully. */
   const completePendingSwitchIfNeeded = useEffectEvent(
     (slotId: SlotId, eventTimeStamp?: number, expected?: Pick<PendingTransition, "gen" | "player">): boolean => {
       const pending = pendingTransitionRef.current;
@@ -688,6 +683,22 @@ export function VideoPlayer({
     return pending?.slotId === slotId ? pending : undefined;
   });
 
+  const fallbackPendingSwitchToHardSwitch = useEffectEvent(
+    (slotId: SlotId, eventTimeStamp?: number, expected?: Pick<PendingTransition, "gen" | "player">): boolean => {
+      const pending = pendingTransitionRef.current;
+      if (!pending || pending.slotId !== slotId) return false;
+      if (pending.gen !== transitionGenRef.current) return false;
+      if (slotPlayerRef(slotId).current !== pending.player) return false;
+      if (expected && (pending.gen !== expected.gen || pending.player !== expected.player)) return false;
+      if (eventTimeStamp !== undefined && eventTimeStamp < pending.startedAt) return false;
+
+      pending.player.stop();
+      cancelPendingTransition();
+      handleLoadSegments(segments, true);
+      return true;
+    },
+  );
+
   const getRetrySegments = useEffectEvent((): PlayerSegment[] => {
     if (playMode === "live") {
       return segments;
@@ -695,7 +706,9 @@ export function VideoPlayer({
     const source = channel?.sources[activeSourceIndex];
     if (source?.catchupSource) {
       const seekTime = mseToWallClock(currentVideoTime, streamStartTime);
-      return buildCatchupSegments(source, seekTime);
+      return buildCatchupSegments(source, seekTime, {
+        overlapMs: playbackBackendKind === "native" ? 0 : undefined,
+      });
     }
     return segments;
   });
@@ -706,7 +719,8 @@ export function VideoPlayer({
 
     const isPendingTransition = pendingTransitionRef.current?.slotId === slotId;
     if (isPendingTransition) {
-      completePendingSwitchIfNeeded(slotId);
+      fallbackPendingSwitchToHardSwitch(slotId);
+      return;
     }
 
     const technicalErrorMessage = formatTechnicalPlayerError(playerError);
@@ -827,8 +841,8 @@ export function VideoPlayer({
   }
 
   const handleSeekNeeded = useEffectEvent((seconds: number) => {
-    const video = getActiveVideo();
-    shouldAutoPlayRef.current = !video?.paused;
+    const player = getActivePlayer();
+    shouldAutoPlayRef.current = !player?.getState().paused;
     const seekTime = mseToWallClock(seconds, streamStartTime);
     onSeek?.(seekTime, isNearLiveWallClock(seekTime, liveSessionAnchor, streamStartTime));
   });
@@ -837,22 +851,21 @@ export function VideoPlayer({
     setNeedsUserInteraction(true);
   });
 
-  const createPlayerForSlot = useEffectEvent((slotId: SlotId): Player | null => {
+  const createPlayerForSlot = useEffectEvent((slotId: SlotId): PlaybackBackend | null => {
     const video = slotVideoRef(slotId).current;
-    if (!video || !isSupported()) return null;
+    if (!video || (playbackBackendKind === "mse" && !isMSEPlaybackSupported())) return null;
 
     const existing = slotPlayerRef(slotId).current;
     if (existing) return existing;
 
-    video.volume = volume;
-    video.muted = isMuted;
-
-    const p = createPlayer(video, {
+    const p = createPlaybackBackend(video, {
       wasmDecoders: { mp2: mp2WasmUrl },
       renderCanvas: slotCanvasRef(slotId).current ?? undefined,
       autoDeinterlace,
       pictureEnhancement,
     });
+    p.setVolume(volume);
+    p.setMuted(isMuted);
     p.on("error", (e) => {
       if (slotPlayerRef(slotId).current === p) {
         handlePlayerError(e, slotId);
@@ -868,8 +881,7 @@ export function VideoPlayer({
       slotLiveStateRef.current[slotId] = live;
       if (slotId === getActiveSlotId()) {
         setIsLive(live);
-        const video = slotVideoRef(slotId).current;
-        if (!live && video?.paused && playMode === "live") {
+        if (!live && p.getState().paused && playMode === "live") {
           p.setLiveSync(false);
         }
       }
@@ -889,25 +901,50 @@ export function VideoPlayer({
         setSlotMediaInfo((previousMediaInfo) => ({ ...previousMediaInfo, [slotId]: mediaInfo }));
       }
     });
+    p.on("time-update", (time) => {
+      if (slotPlayerRef(slotId).current !== p || slotId !== getActiveSlotId()) return;
+      onCurrentVideoTimeChange(time);
+      updateMediaSessionPosition();
+    });
+    p.on("ended", () => {
+      if (slotPlayerRef(slotId).current === p && slotId === getActiveSlotId()) {
+        handlePlaybackEnded();
+      }
+    });
+    p.on("playback-state-change", (state, eventTimeStamp) => {
+      if (slotPlayerRef(slotId).current !== p) return;
+      if (state === "canplay") handleVideoCanPlay(slotId);
+      if (state === "waiting") handleVideoWaiting(slotId);
+      if (state === "playing") handleVideoPlaying(slotId, eventTimeStamp);
+      if (state === "paused") handleVideoPause(slotId);
+    });
+    p.on("volume-change", (nextVolume, nextMuted) => {
+      if (slotPlayerRef(slotId).current !== p || slotId !== getActiveSlotId()) return;
+      setVolume(nextVolume);
+      setIsMuted(nextMuted);
+      saveVolume(nextVolume);
+      saveMuted(nextMuted);
+    });
     applyPlayerSettings(p);
     slotPlayerRef(slotId).current = p;
     return p;
   });
 
   const playVideoWithAutoplayFallback = useEffectEvent(
-    (video: HTMLVideoElement, slotId?: SlotId, expected?: Pick<PendingTransition, "gen" | "player">) => {
+    (slotId?: SlotId, expected?: Pick<PendingTransition, "gen" | "player">) => {
       userPausedRef.current = false;
-      const playPromise = video.play();
+      const player = slotId ? slotPlayerRef(slotId).current : getActivePlayer();
+      if (!player) return;
+      const playPromise = player.play();
       if (playPromise) {
         playPromise
           .catch((err: Error) => {
             if (isInterruptedPlayError(err)) return;
             if (slotId && !isPendingTransitionExpected(slotId, expected)) return;
-            if (err.name === "NotAllowedError" || err.message.includes("user didn't interact")) {
+            if (slotId) {
+              fallbackPendingSwitchToHardSwitch(slotId, undefined, expected);
+            } else if (err.name === "NotAllowedError" || err.message.includes("user didn't interact")) {
               setNeedsUserInteraction(true);
-              if (slotId) completePendingSwitchIfNeeded(slotId, undefined, expected);
-            } else if (slotId) {
-              completePendingSwitchIfNeeded(slotId, undefined, expected);
             }
           })
           .finally(() => {
@@ -919,19 +956,18 @@ export function VideoPlayer({
     },
   );
 
-  const loadActiveSlotSegments = useEffectEvent((player: Player, slotId: SlotId, newSegments: PlayerSegment[]) => {
-    setSlotMediaInfo((previousMediaInfo) => ({ ...previousMediaInfo, [slotId]: null }));
-    player.loadSegments(newSegments);
+  const loadActiveSlotSegments = useEffectEvent(
+    (player: PlaybackBackend, slotId: SlotId, newSegments: PlayerSegment[]) => {
+      setSlotMediaInfo((previousMediaInfo) => ({ ...previousMediaInfo, [slotId]: null }));
+      player.loadSegments(newSegments);
 
-    if (shouldAutoPlayRef.current) {
-      const video = slotVideoRef(slotId).current;
-      if (video) {
-        playVideoWithAutoplayFallback(video);
+      if (shouldAutoPlayRef.current) {
+        playVideoWithAutoplayFallback();
+      } else {
+        setIsLoading(false);
       }
-    } else {
-      setIsLoading(false);
-    }
-  });
+    },
+  );
 
   const updateMediaSessionPosition = useEffectEvent((force = false) => {
     if (!("mediaSession" in navigator) || !navigator.mediaSession.setPositionState) return;
@@ -944,11 +980,12 @@ export function VideoPlayer({
     const now = Date.now();
     if (!force && now - mediaSessionPositionUpdatedAtRef.current < 1000) return;
 
-    const video = getActiveVideo();
-    if (!video) return;
+    const player = getActivePlayer();
+    if (!player) return;
+    const state = player.getState();
     mediaSessionPositionUpdatedAtRef.current = now;
 
-    const timeline = currentProgram ? createProgramTimeline(currentProgram, streamStartTime, video.currentTime) : null;
+    const timeline = currentProgram ? createProgramTimeline(currentProgram, streamStartTime, state.currentTime) : null;
     const supportsCatchup = channel.sources.some((source) => source.catchup && source.catchupSource);
 
     try {
@@ -956,13 +993,13 @@ export function VideoPlayer({
         navigator.mediaSession.setPositionState({
           duration: timeline.durationSeconds,
           position: timeline.positionSeconds,
-          playbackRate: video.playbackRate || 1,
+          playbackRate: state.playbackRate,
         });
       } else {
         navigator.mediaSession.setPositionState({
           duration: Infinity,
-          position: Math.max(0, video.currentTime),
-          playbackRate: video.playbackRate || 1,
+          position: Math.max(0, state.currentTime),
+          playbackRate: state.playbackRate,
         });
       }
     } catch {
@@ -973,12 +1010,12 @@ export function VideoPlayer({
 
   const handleMediaSessionPlay = useEffectEvent(() => {
     userPausedRef.current = false;
-    getActiveVideo()?.play()?.catch(ignoreInterruptedPlayError);
+    getActivePlayer()?.play().catch(ignoreInterruptedPlayError);
   });
 
   const handleMediaSessionPause = useEffectEvent(() => {
     userPausedRef.current = true;
-    getActiveVideo()?.pause();
+    getActivePlayer()?.pause();
   });
 
   const handleMediaSessionSeekBackward = useEffectEvent((details: MediaSessionActionDetails) => {
@@ -1039,7 +1076,7 @@ export function VideoPlayer({
   );
 
   // Load segments whenever they change (channel/source switch, seek, retry — all go through here)
-  const handleLoadSegments = useEffectEvent((newSegments: PlayerSegment[]) => {
+  const handleLoadSegments = useEffectEvent((newSegments: PlayerSegment[], forceHardSwitch = false) => {
     if (!newSegments.length) return;
 
     const activeId = getActiveSlotId();
@@ -1063,14 +1100,16 @@ export function VideoPlayer({
       prevStreamRef.current != null &&
       (channel.id !== prevStreamRef.current.channelId || activeSourceIndex !== prevStreamRef.current.sourceIndex);
     const activeVideo = slotVideoRef(activeId).current;
+    const activeState = activePlayer.getState();
     const useSeamlessSwitch =
+      !forceHardSwitch &&
       seamlessSwitch &&
       !isAnyPictureInPictureActive() &&
       hasStartedPlaybackRef.current &&
       isStreamSwitch &&
       playMode === "live" &&
       shouldAutoPlayRef.current &&
-      !activeVideo?.paused;
+      !activeState.paused;
 
     if (channel) {
       prevStreamRef.current = { channelId: channel.id, sourceIndex: activeSourceIndex };
@@ -1098,8 +1137,8 @@ export function VideoPlayer({
     }
 
     if (activeVideo) {
-      pendingVideo.volume = activeVideo.volume;
-      pendingVideo.muted = true;
+      pendingPlayer.setVolume(activeState.volume);
+      pendingPlayer.setMuted(true);
     }
 
     const pendingTransition = { gen, slotId: pendingId, player: pendingPlayer, startedAt: performance.now() };
@@ -1111,7 +1150,7 @@ export function VideoPlayer({
     pendingPlayer.loadSegments(newSegments);
 
     if (shouldAutoPlayRef.current) {
-      playVideoWithAutoplayFallback(pendingVideo, pendingId, pendingTransition);
+      playVideoWithAutoplayFallback(pendingId, pendingTransition);
     } else {
       setIsLoading(false);
     }
@@ -1180,16 +1219,6 @@ export function VideoPlayer({
     }
   });
 
-  const handleVideoVolumeChange = useEffectEvent((slotId: SlotId) => {
-    if (slotId !== getActiveSlotId()) return;
-    const video = slotVideoRef(slotId).current;
-    if (!video) return;
-    setVolume(video.volume);
-    setIsMuted(video.muted);
-    saveVolume(video.volume);
-    saveMuted(video.muted);
-  });
-
   const handleVideoPlaying = useEffectEvent((slotId: SlotId, eventTimeStamp: number) => {
     const pending = currentPendingTransition(slotId);
     if (pending) {
@@ -1203,10 +1232,10 @@ export function VideoPlayer({
     setIsPlaying(true);
     onPlaybackStarted?.();
 
-    const video = slotVideoRef(slotId).current;
-    if (playMode === "live" && video && !wallClockCalibratedRef.current) {
+    const player = slotPlayerRef(slotId).current;
+    if (playMode === "live" && player && !wallClockCalibratedRef.current) {
       wallClockCalibratedRef.current = true;
-      calibrateLiveSession(video);
+      calibrateLiveSession(player);
     }
 
     if (stablePlaybackTimeoutRef.current) {
@@ -1230,24 +1259,16 @@ export function VideoPlayer({
     }
   });
 
-  const handleVideoTimeUpdate = useEffectEvent((slotId: SlotId) => {
-    if (slotId !== getActiveSlotId()) return;
-    const video = slotVideoRef(slotId).current;
-    if (!video) return;
-    onCurrentVideoTimeChange(video.currentTime);
-    updateMediaSessionPosition();
-  });
-
   const handleVideoTimelineChange = useEffectEvent((slotId: SlotId) => {
     if (slotId !== getActiveSlotId()) return;
     updateMediaSessionPosition(true);
   });
 
-  const handleVideoEnded = useEffectEvent((slotId: SlotId) => {
-    if (slotId !== getActiveSlotId()) return;
-    const video = slotVideoRef(slotId).current;
-    if (onSeek && video?.duration) {
-      const seekTime = mseToWallClock(video.duration, streamStartTime);
+  const handlePlaybackEnded = useEffectEvent(() => {
+    const player = getActivePlayer();
+    const duration = player?.getState().duration;
+    if (onSeek && duration && Number.isFinite(duration)) {
+      const seekTime = mseToWallClock(duration, streamStartTime);
       onSeek(seekTime, isNearLiveWallClock(seekTime, liveSessionAnchor, streamStartTime));
     }
   });
@@ -1300,8 +1321,8 @@ export function VideoPlayer({
       return;
     }
 
-    if (video.paused) {
-      video.play()?.catch((err: Error) => {
+    if (activePlayer.getState().paused) {
+      activePlayer.play().catch((err: Error) => {
         if (isInterruptedPlayError(err)) return;
         if (err.name === "NotAllowedError") {
           setNeedsUserInteraction(true);
@@ -1315,6 +1336,19 @@ export function VideoPlayer({
     document.addEventListener("visibilitychange", handler);
     return () => document.removeEventListener("visibilitychange", handler);
   }, []);
+
+  const handleMuteToggle = useEffectEvent(() => {
+    const player = getActivePlayer();
+    if (!player) return;
+
+    const state = player.getState();
+    if (state.volume <= 0) {
+      player.setVolume(1);
+      player.setMuted(false);
+      return;
+    }
+    player.setMuted(!state.muted);
+  });
 
   const handleKeyDown = useEffectEvent((e: KeyboardEvent) => {
     const eventDocument = getEventDocument(e);
@@ -1416,12 +1450,7 @@ export function VideoPlayer({
       case "m":
       case "M":
         e.preventDefault();
-        {
-          const video = getActiveVideo();
-          if (video) {
-            video.muted = !video.muted;
-          }
-        }
+        handleMuteToggle();
         break;
 
       case "f":
@@ -1440,7 +1469,7 @@ export function VideoPlayer({
   });
 
   const handleVideoElementError = useEffectEvent((slotId: SlotId, eventTimeStamp: number) => {
-    completePendingSwitchIfNeeded(slotId, eventTimeStamp);
+    fallbackPendingSwitchToHardSwitch(slotId, eventTimeStamp);
   });
 
   useEffect(() => {
@@ -1449,15 +1478,8 @@ export function VideoPlayer({
       if (!video) return () => {};
 
       const listeners: Array<[string, EventListener]> = [
-        ["canplay", () => handleVideoCanPlay(slotId)],
-        ["waiting", () => handleVideoWaiting(slotId)],
-        ["volumechange", () => handleVideoVolumeChange(slotId)],
-        ["playing", (event) => handleVideoPlaying(slotId, event.timeStamp)],
-        ["pause", () => handleVideoPause(slotId)],
-        ["timeupdate", () => handleVideoTimeUpdate(slotId)],
         ["seeked", () => handleVideoTimelineChange(slotId)],
         ["ratechange", () => handleVideoTimelineChange(slotId)],
-        ["ended", () => handleVideoEnded(slotId)],
         ["enterpictureinpicture", () => handleVideoEnterPiP(slotId)],
         ["leavepictureinpicture", () => handleVideoLeavePiP()],
         ["error", (event) => handleVideoElementError(slotId, event.timeStamp)],
@@ -1507,19 +1529,12 @@ export function VideoPlayer({
     };
   }, [isDocumentPiP]);
 
-  const handleMuteToggle = useEffectEvent(() => {
-    const video = getActiveVideo();
-    if (video) {
-      video.muted = !video.muted;
-    }
-  });
-
   const handleVolumeChange = useEffectEvent((newVolume: number) => {
-    const video = getActiveVideo();
-    if (video) {
-      video.volume = newVolume;
-      if (video.muted && newVolume > 0) {
-        video.muted = false;
+    const player = getActivePlayer();
+    if (player) {
+      player.setVolume(newVolume);
+      if (player.getState().muted && newVolume > 0) {
+        player.setMuted(false);
       }
     }
   });
@@ -1576,8 +1591,9 @@ export function VideoPlayer({
   const enterPictureInPicture = useEffectEvent(async () => {
     if (isAnyPictureInPictureActive()) return;
 
-    const video = getActiveVideo();
-    if (!video) return;
+    const player = getActivePlayer();
+    if (!player) return;
+    const video = player.mediaElement;
 
     let openedDocumentPiPWindow: Window | null = null;
 
@@ -1675,12 +1691,12 @@ export function VideoPlayer({
   }, [canNavigateChannelsInMediaSession, canSeekProgramInMediaSession]);
 
   const handleUserInteraction = useEffectEvent(() => {
-    const video = getActiveVideo();
-    if (!video) return;
+    const player = getActivePlayer();
+    if (!player) return;
     setNeedsUserInteraction(false);
     setIsPlaying(true);
     userPausedRef.current = false;
-    video.play()?.catch((err: Error) => {
+    player.play().catch((err: Error) => {
       if (isInterruptedPlayError(err)) return;
       console.error("Play error after user interaction:", err);
       setError({ message: `${t("failedToPlay")}: ${err.message}` });
@@ -1716,7 +1732,7 @@ export function VideoPlayer({
       role="application"
       ref={playerSurfaceRef}
       className={clsx(
-        "dark @container-size/video relative flex aspect-video w-full min-h-0 items-center justify-center bg-[radial-gradient(circle_at_50%_35%,#102044_0%,#050b18_58%,#01030a_100%)]",
+        "player-performance-video-background dark @container-size/video relative flex aspect-video w-full min-h-0 items-center justify-center bg-[radial-gradient(circle_at_50%_35%,#102044_0%,#050b18_58%,#01030a_100%)]",
         isDocumentPiP ? "h-screen min-h-screen aspect-auto" : "md:aspect-auto md:h-full",
         !showControls && "cursor-none",
       )}
@@ -1800,7 +1816,7 @@ export function VideoPlayer({
                   className={clsx(
                     "shrink-0 rounded-md px-1 py-0.5 font-semibold text-[10px] transition-[color,background-color,box-shadow,scale] duration-300 md:px-1.5 md:text-xs md:[@container_video_(max-height:_320px)]:px-1 md:[@container_video_(max-height:_320px)]:text-[10px]",
                     digitBuffer
-                      ? "scale-110 bg-[linear-gradient(135deg,#3b82f6,#6366f1)] text-white shadow-[0_0_20px_rgba(59,130,246,0.45)] ring-2 ring-blue-200/40"
+                      ? "scale-110 bg-blue-600 bg-[linear-gradient(135deg,#3b82f6,#6366f1)] text-white shadow-[0_0_20px_rgba(59,130,246,0.45)] ring-2 ring-blue-200/40"
                       : "bg-blue-100/10 text-blue-50/65 ring-1 ring-blue-100/10",
                   )}
                 >
@@ -1828,7 +1844,7 @@ export function VideoPlayer({
       {needsUserInteraction && (
         <button
           type="button"
-          className="absolute inset-0 z-10 flex cursor-pointer items-center justify-center border-none bg-[radial-gradient(circle_at_center,rgba(18,50,91,0.78),rgba(2,6,23,0.94)_68%)] p-4 transition-[filter,background-color] backdrop-blur-[2px] hover:brightness-110"
+          className="player-performance-overlay-background absolute inset-0 z-10 flex cursor-pointer items-center justify-center border-none bg-[radial-gradient(circle_at_center,rgba(18,50,91,0.78),rgba(2,6,23,0.94)_68%)] p-4 transition-[filter,background-color] backdrop-blur-[2px] hover:brightness-110"
           onClick={handleUserInteraction}
         >
           <div className="flex flex-col items-center gap-4 text-white">
@@ -1847,7 +1863,7 @@ export function VideoPlayer({
             role="alert"
             className={clsx(
               PLAYER_OVERLAY_SURFACE_CLASS,
-              "pointer-events-auto w-full max-w-xl rounded-xl border-amber-200/25 bg-[linear-gradient(145deg,rgba(66,43,12,0.92),rgba(27,24,35,0.92))] p-3 text-white shadow-[0_16px_48px_rgba(24,13,2,0.48)] backdrop-blur-md md:p-4",
+              "player-performance-warning-background pointer-events-auto w-full max-w-xl rounded-xl border-amber-200/25 bg-[linear-gradient(145deg,rgba(66,43,12,0.92),rgba(27,24,35,0.92))] p-3 text-white shadow-[0_16px_48px_rgba(24,13,2,0.48)] backdrop-blur-md md:p-4",
             )}
           >
             <div className="flex items-start gap-3">
@@ -1875,11 +1891,11 @@ export function VideoPlayer({
       )}
 
       {error && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center bg-[radial-gradient(circle_at_center,rgba(76,20,55,0.46),rgba(2,6,23,0.96)_72%)] p-3 backdrop-blur-[3px] md:p-4">
+        <div className="player-performance-error-backdrop player-performance-overlay-background absolute inset-0 z-10 flex items-center justify-center bg-[radial-gradient(circle_at_center,rgba(76,20,55,0.46),rgba(2,6,23,0.96)_72%)] p-3 backdrop-blur-[3px] md:p-4">
           <div
             className={clsx(
               PLAYER_OVERLAY_SURFACE_CLASS,
-              "max-h-full w-full max-w-xl overflow-y-auto rounded-2xl border-rose-300/25 bg-[linear-gradient(145deg,rgba(52,18,50,0.82),rgba(12,22,51,0.8))] p-4 text-white shadow-[0_20px_60px_rgba(43,5,32,0.58)] [@media(max-height:360px)]:p-2.5 md:p-5",
+              "player-performance-error-background player-performance-overlay-background max-h-full w-full max-w-xl overflow-y-auto rounded-2xl border-rose-300/25 bg-[linear-gradient(145deg,rgba(52,18,50,0.82),rgba(12,22,51,0.8))] p-4 text-white shadow-[0_20px_60px_rgba(43,5,32,0.58)] [@media(max-height:360px)]:p-2.5 md:p-5",
             )}
           >
             <div className="flex items-center gap-2 font-semibold text-lg text-rose-100">
@@ -1932,7 +1948,7 @@ export function VideoPlayer({
         <div
           role="toolbar"
           className={clsx(
-            "absolute bottom-0 left-[calc(0px_-_env(safe-area-inset-left))] right-[calc(0px_-_env(safe-area-inset-right))] z-10 transition-opacity duration-300",
+            "player-performance-controls-position absolute bottom-0 left-[calc(0px_-_env(safe-area-inset-left))] right-[calc(0px_-_env(safe-area-inset-right))] z-10 transition-opacity duration-300",
             showSidebar && "md:right-0",
             showControls
               ? "opacity-100"
@@ -1977,7 +1993,7 @@ export function VideoPlayer({
   return (
     <div
       className={clsx(
-        "relative w-full bg-[radial-gradient(circle_at_50%_35%,#102044_0%,#050b18_58%,#01030a_100%)] pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pl-[env(safe-area-inset-left)] md:h-full",
+        "player-performance-video-background relative w-full bg-[radial-gradient(circle_at_50%_35%,#102044_0%,#050b18_58%,#01030a_100%)] pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pl-[env(safe-area-inset-left)] md:h-full",
         showSidebar && "md:pr-0",
       )}
     >
