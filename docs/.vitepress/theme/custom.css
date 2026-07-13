@@ -14,9 +14,6 @@
   --rtp-home-nav-background: hsl(var(--rtp-home-card) / 0.44);
   --rtp-home-nav-border: hsl(var(--rtp-home-border) / 0.45);
   --rtp-home-nav-shadow: 0 12px 42px -34px hsl(230 44% 20% / 0.38);
-  --vp-font-family-base:
-    "Inter Variable", "SF Pro Display", "SF Pro Text", "Segoe UI Variable", "Segoe UI", "PingFang SC",
-    "Microsoft YaHei", ui-sans-serif, system-ui, sans-serif;
   --vp-c-brand-1: hsl(var(--rtp-home-primary));
   --vp-c-brand-2: hsl(252 76% 54%);
   --vp-c-brand-3: hsl(252 72% 47%);
