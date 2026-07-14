@@ -22,14 +22,7 @@ import {
 } from "../../lib/document-picture-in-picture";
 import type { Locale } from "../../lib/locale";
 import { buildCatchupSegments } from "../../lib/m3u-parser";
-import {
-  getLastAudioTrackKey,
-  getMuted,
-  getVolume,
-  saveLastAudioTrackKey,
-  saveMuted,
-  saveVolume,
-} from "../../lib/player-storage";
+import { getMuted, getVolume, saveMuted, saveVolume } from "../../lib/player-storage";
 import { createProgramTimeline, programPositionToWallClock } from "../../lib/program-timeline";
 import {
   createPlaybackBackend,
@@ -37,7 +30,6 @@ import {
   getPlaybackBackendKind,
   isMSEPlaybackSupported,
   type PlaybackBackend,
-  type PlayerAudioTrackState,
   type PlayerError,
   PlayerErrors,
   type PlayerMediaInfo,
@@ -96,7 +88,6 @@ interface PlaybackErrorDisplay {
 
 const MAX_RETRIES = 3;
 const INACTIVE_RENDER_STATE: PlayerRenderState = { active: false, deinterlacing: false };
-const EMPTY_AUDIO_TRACK_STATE: PlayerAudioTrackState = { tracks: [] };
 
 type SlotId = "a" | "b";
 
@@ -313,15 +304,6 @@ function VideoPlayerComponent({
     a: null,
     b: null,
   });
-  const [slotAudioTrackStates, setSlotAudioTrackStates] = useState<Record<SlotId, PlayerAudioTrackState>>({
-    a: EMPTY_AUDIO_TRACK_STATE,
-    b: EMPTY_AUDIO_TRACK_STATE,
-  });
-  const pendingAudioPreferenceRef = useRef<{
-    channelId: string;
-    trackId: string;
-    preferenceKey: string;
-  } | null>(null);
   const transitionGenRef = useRef(0);
   const pendingTransitionRef = useRef<PendingTransition | null>(null);
   const hasStartedPlaybackRef = useRef(false);
@@ -824,10 +806,10 @@ function VideoPlayerComponent({
   });
 
   const handlePlayerError = useEffectEvent((playerError: PlayerError, slotId: SlotId) => {
-    if (playerError.track === "audio") {
+    if (playerError.detail === PlayerErrors.CODEC_UNSUPPORTED && playerError.track === "audio") {
       console.error("Player audio warning:", playerError);
       setWarning({
-        message: playerError.detail === PlayerErrors.CODEC_UNSUPPORTED ? t("audioCodecError") : t("audioTrackError"),
+        message: t("audioCodecError"),
         description: formatTechnicalPlayerError(playerError),
       });
       return;
@@ -917,18 +899,6 @@ function VideoPlayerComponent({
         setSlotMediaInfo((previousMediaInfo) => ({ ...previousMediaInfo, [slotId]: mediaInfo }));
       }
     });
-    p.on("audio-tracks-change", (state) => {
-      if (slotPlayerRef(slotId).current === p) {
-        setSlotAudioTrackStates((previous) => ({ ...previous, [slotId]: state }));
-        const pendingPreference = pendingAudioPreferenceRef.current;
-        if (!state.pendingTrackId && pendingPreference) {
-          if (state.selectedTrackId === pendingPreference.trackId) {
-            saveLastAudioTrackKey(pendingPreference.channelId, pendingPreference.preferenceKey);
-          }
-          pendingAudioPreferenceRef.current = null;
-        }
-      }
-    });
     p.on("time-update", (time) => {
       if (slotPlayerRef(slotId).current !== p || slotId !== getActiveSlotId()) return;
       currentVideoTimeRef.current = time;
@@ -985,19 +955,10 @@ function VideoPlayerComponent({
     },
   );
 
-  const loadSegmentsIntoSlot = useEffectEvent(
-    (player: PlaybackBackend, slotId: SlotId, newSegments: PlayerSegment[]) => {
-      setSlotMediaInfo((previous) => ({ ...previous, [slotId]: null }));
-      setSlotAudioTrackStates((previous) => ({ ...previous, [slotId]: EMPTY_AUDIO_TRACK_STATE }));
-      player.loadSegments(newSegments, {
-        preferredAudioTrackKey: channel ? getLastAudioTrackKey(channel.id) : undefined,
-      });
-    },
-  );
-
   const loadActiveSlotSegments = useEffectEvent(
     (player: PlaybackBackend, slotId: SlotId, newSegments: PlayerSegment[]) => {
-      loadSegmentsIntoSlot(player, slotId, newSegments);
+      setSlotMediaInfo((previousMediaInfo) => ({ ...previousMediaInfo, [slotId]: null }));
+      player.loadSegments(newSegments);
 
       if (shouldAutoPlayRef.current) {
         playVideoWithAutoplayFallback();
@@ -1006,15 +967,6 @@ function VideoPlayerComponent({
       }
     },
   );
-
-  const handleAudioTrackChange = useEffectEvent((trackId: string) => {
-    const state = slotAudioTrackStates[getActiveSlotId()];
-    const track = state.tracks.find((candidate) => candidate.id === trackId);
-    const activePlayer = getActivePlayer();
-    if (!track || !channel || !activePlayer || trackId === state.selectedTrackId) return;
-    pendingAudioPreferenceRef.current = { channelId: channel.id, trackId, preferenceKey: track.preferenceKey };
-    activePlayer.selectAudioTrack(trackId);
-  });
 
   const updateMediaSessionPosition = useEffectEvent((force = false) => {
     if (!("mediaSession" in navigator) || !navigator.mediaSession.setPositionState) return;
@@ -1195,7 +1147,8 @@ function VideoPlayerComponent({
     // The pending slot's player resets its interlace verdict on loadSegments and
     // starts detecting while hidden, so an interlaced verdict can be ready the
     // moment the switch completes (no combing flash on channel change)
-    loadSegmentsIntoSlot(pendingPlayer, pendingId, newSegments);
+    setSlotMediaInfo((previousMediaInfo) => ({ ...previousMediaInfo, [pendingId]: null }));
+    pendingPlayer.loadSegments(newSegments);
 
     if (shouldAutoPlayRef.current) {
       playVideoWithAutoplayFallback(pendingId, pendingTransition);
@@ -2011,8 +1964,6 @@ function VideoPlayerComponent({
             onScrubbingChange={handleScrubbingChange}
             locale={locale}
             mediaInfo={slotMediaInfo[visibleSlotId]}
-            audioTrackState={slotAudioTrackStates[visibleSlotId]}
-            onAudioTrackChange={handleAudioTrackChange}
             renderState={slotRenderStates[visibleSlotId]}
             autoDeinterlace={autoDeinterlace}
             seekStartTime={streamStartTime}

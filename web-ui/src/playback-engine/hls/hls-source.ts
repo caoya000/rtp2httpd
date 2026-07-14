@@ -1,16 +1,7 @@
 import type { PlayerConfig } from "../config";
-import type { PlayerAudioTrack } from "../types";
 import Log from "../utils/logger";
 import type { SegmentMeta, SegmentSource } from "../worker/segment-source";
-import {
-  type HlsAudioRendition,
-  type HlsMediaPlaylist,
-  type HlsVariant,
-  mediaTimeSegmentIndex,
-  parseM3U8,
-  programDateTimeSegmentIndex,
-  selectAudioRendition,
-} from "./m3u8";
+import { type HlsMediaPlaylist, type HlsVariant, parseM3U8 } from "./m3u8";
 
 export interface HlsInfo {
   live: boolean;
@@ -23,38 +14,11 @@ export interface HlsInfo {
   resolution?: { width: number; height: number };
   frameRate?: number;
   videoRange?: string;
-  audioTracks?: PlayerAudioTrack[];
-  /** Whether the selected variant references an EXT-X-MEDIA audio group. */
-  hasAudioGroup?: boolean;
-  selectedAudioTrackId?: string;
-  selectedAudioTrackUrl?: string;
-  /** Worker-internal runtime lookup; URLs are intentionally absent from public track state. */
-  audioTrackUrls?: Record<string, string>;
-  /** Wall-clock time corresponding to MSE timeline zero, when supplied by the playlist. */
-  timelineProgramDateTime?: number;
-  /** First segment boundary selected by this source on the MSE timeline. */
-  playbackStartTime?: number;
-  /** Distance from the selected live position to the playlist edge, in seconds. */
-  liveEdgeDistance?: number;
-}
-
-export interface HlsSourceOptions {
-  preferredAudioTrackKey?: string;
-  /** Position assigned to the first selected live segment (used by rendition switches). */
-  liveTimelineOffset?: number;
-  /** For VOD rendition switches, start with the segment covering this position. */
-  startTime?: number;
-  /** Prefer the segment covering this wall-clock time when aligning renditions. */
-  programDateTimeAnchor?: number;
-  /** Match another rendition's distance from the live edge when wall-clock time is unavailable. */
-  liveEdgeDistance?: number;
 }
 
 const TAG = "HlsSource";
 /** Start playback this many segments away from the live edge. */
 const LIVE_EDGE_SEGMENTS = 3;
-/** Fetch earlier alternate-rendition segments so raw timestamps can resolve playlist-window skew. */
-const LIVE_RENDITION_PREROLL_SEGMENTS = 2;
 const MAX_REFRESH_FAILURES = 5;
 
 export class HlsRequestError extends Error {
@@ -83,13 +47,6 @@ export class HlsSource implements SegmentSource {
   private targetDuration = 6;
   private totalDuration = 0;
   private selectedVariant: Omit<HlsVariant, "url"> | undefined;
-  private hasAudioGroup = false;
-  private audioTracks: PlayerAudioTrack[] = [];
-  private audioRenditionUrls = new Map<string, string>();
-  private selectedAudioTrack: HlsAudioRendition | undefined;
-  private timelineProgramDateTime: number | undefined;
-  private playbackStartTime = 0;
-  private liveEdgeDistance: number | undefined;
 
   private segments: SegmentMeta[] = [];
   private nextIndex = 0;
@@ -104,18 +61,11 @@ export class HlsSource implements SegmentSource {
   private lastPlaylistHadNews = true;
   /** Playlist content already fetched during HLS detection, consumed on the first load. */
   private preloaded: { text: string; url: string } | null;
-  private readonly options: HlsSourceOptions;
 
-  constructor(
-    url: string,
-    config: PlayerConfig,
-    preloaded?: { text: string; url: string },
-    options: HlsSourceOptions = {},
-  ) {
+  constructor(url: string, config: PlayerConfig, preloaded?: { text: string; url: string }) {
     this.url = preloaded?.url ?? url;
     this.config = config;
     this.preloaded = preloaded ?? null;
-    this.options = options;
   }
 
   get info(): HlsInfo {
@@ -124,14 +74,6 @@ export class HlsSource implements SegmentSource {
       targetDuration: this.targetDuration,
       totalDuration: this.totalDuration,
       ...this.selectedVariant,
-      audioTracks: this.audioTracks,
-      hasAudioGroup: this.hasAudioGroup,
-      selectedAudioTrackId: this.selectedAudioTrack?.id,
-      selectedAudioTrackUrl: this.selectedAudioTrack?.url,
-      audioTrackUrls: Object.fromEntries(this.audioRenditionUrls),
-      timelineProgramDateTime: this.timelineProgramDateTime,
-      playbackStartTime: this.playbackStartTime,
-      liveEdgeDistance: this.liveEdgeDistance,
     };
   }
 
@@ -172,54 +114,12 @@ export class HlsSource implements SegmentSource {
 
     if (this.live) {
       // Start near the live edge and rebase the timeline so playback starts at 0
-      const programDateTimeAnchor = this.options.programDateTimeAnchor;
-      const programDateTimeIndex =
-        programDateTimeAnchor === undefined
-          ? -1
-          : programDateTimeSegmentIndex(playlist.segments, programDateTimeAnchor);
-      const liveEdgeTarget =
-        this.options.liveEdgeDistance === undefined
-          ? undefined
-          : Math.max(0, playlist.totalDuration - this.options.liveEdgeDistance);
-      const matchedLiveEdgeIndex =
-        liveEdgeTarget === undefined ? -1 : mediaTimeSegmentIndex(this.segments, liveEdgeTarget);
-      const liveEdgeIndex =
-        matchedLiveEdgeIndex < 0 ? -1 : Math.max(0, matchedLiveEdgeIndex - LIVE_RENDITION_PREROLL_SEGMENTS);
-      this.nextIndex =
-        programDateTimeIndex >= 0
-          ? programDateTimeIndex
-          : liveEdgeIndex >= 0
-            ? liveEdgeIndex
-            : Math.max(0, this.segments.length - LIVE_EDGE_SEGMENTS);
+      this.nextIndex = Math.max(0, this.segments.length - LIVE_EDGE_SEGMENTS);
       const base = this.segments[this.nextIndex]?.start ?? 0;
-      const selectedProgramDateTime = playlist.segments[this.nextIndex]?.programDateTime;
-      const selectedLead = liveEdgeTarget === undefined || programDateTimeIndex >= 0 ? 0 : liveEdgeTarget - base;
-      const offset =
-        (this.options.liveTimelineOffset ?? 0) -
-        selectedLead +
-        (programDateTimeAnchor !== undefined && selectedProgramDateTime !== undefined
-          ? Math.max(0, (selectedProgramDateTime - programDateTimeAnchor) / 1000)
-          : 0);
-      const timelineAdjustment = offset - base;
-      if (timelineAdjustment !== 0) {
-        this.segments = this.segments.map((segment) => ({
-          ...segment,
-          start: segment.start + timelineAdjustment,
-        }));
-        this.timelinePos += timelineAdjustment;
+      if (base > 0) {
+        this.segments = this.segments.map((s) => ({ ...s, start: s.start - base }));
+        this.timelinePos -= base;
       }
-      this.timelineProgramDateTime =
-        selectedProgramDateTime === undefined ? undefined : selectedProgramDateTime - offset * 1000;
-      this.playbackStartTime = this.segments[this.nextIndex]?.start ?? offset;
-      this.liveEdgeDistance = Math.max(0, playlist.totalDuration - (liveEdgeTarget ?? base));
-      Log.v(
-        TAG,
-        `Live selection index=${this.nextIndex} start=${this.playbackStartTime.toFixed(3)}s edgeDistance=${this.liveEdgeDistance.toFixed(3)}s`,
-      );
-    } else if (this.options.startTime !== undefined) {
-      const startTime = this.options.startTime;
-      this.nextIndex = Math.max(0, mediaTimeSegmentIndex(this.segments, startTime));
-      this.playbackStartTime = this.segments[this.nextIndex]?.start ?? startTime;
     }
 
     this.initialized = true;
@@ -291,33 +191,6 @@ export class HlsSource implements SegmentSource {
           }
           const { url: _url, ...selectedVariant } = best;
           this.selectedVariant = selectedVariant;
-          const renditions = best.audioGroupId
-            ? playlist.audioRenditions.filter((rendition) => rendition.groupId === best.audioGroupId)
-            : [];
-          this.hasAudioGroup = renditions.length > 0;
-
-          // A URI-less rendition represents the audio carried by the variant itself. If the
-          // same group also contains external renditions, expose that in-band option through
-          // an audio-only pipeline reading the variant playlist. This keeps every switch on
-          // the existing audio-pipeline replacement path and avoids rebuilding video.
-          const hasExternalRendition = renditions.some((rendition) => rendition.url !== undefined);
-          const playableRenditions = hasExternalRendition
-            ? renditions.map((rendition) => (rendition.url ? rendition : { ...rendition, url: best.url }))
-            : renditions;
-          const selectedAudioTrack = selectAudioRendition(playableRenditions, this.options.preferredAudioTrackKey);
-          this.audioTracks = renditions.map((rendition) => ({
-            id: rendition.id,
-            label: rendition.name,
-            language: rendition.language,
-            isDefault: rendition.isDefault,
-            preferenceKey: rendition.preferenceKey,
-          }));
-          this.audioRenditionUrls = new Map(
-            playableRenditions.flatMap((rendition) =>
-              rendition.url === undefined ? [] : [[rendition.id, rendition.url] as const],
-            ),
-          );
-          this.selectedAudioTrack = selectedAudioTrack;
           this.url = best.url;
           continue; // fetch the selected media playlist
         }

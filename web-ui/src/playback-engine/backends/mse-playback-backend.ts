@@ -66,7 +66,6 @@ export function createMSEPlaybackBackend(video: HTMLVideoElement, config?: Parti
       controller.onLiveStateChange = (isLive) => events.emit("live-state-change", isLive);
       controller.onAudioSuspended = () => events.emit("audio-suspended");
       controller.onMediaInfo = (info) => events.emit("media-info", info);
-      controller.onAudioTracksChange = (state) => events.emit("audio-tracks-change", state);
     }
     return controller;
   }
@@ -75,13 +74,11 @@ export function createMSEPlaybackBackend(video: HTMLVideoElement, config?: Parti
     kind: "mse",
     mediaElement: video,
 
-    loadSegments(segments, options) {
+    loadSegments(segments) {
       if (destroyed || !segments.length) return;
       renderPipeline?.reset();
-      getController().loadSegments(resolveSegmentUrls(segments), options);
+      getController().loadSegments(resolveSegmentUrls(segments));
     },
-
-    selectAudioTrack: (trackId) => controller?.selectAudioTrack(trackId),
 
     play: () => video.play(),
     pause: () => video.pause(),
