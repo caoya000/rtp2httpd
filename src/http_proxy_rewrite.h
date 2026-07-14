@@ -29,6 +29,14 @@ typedef struct {
 /* ========== M3U/HLS Rewriting ========== */
 
 /**
+ * Check if URL path ends with an M3U/M3U8 extension
+ * Query strings and fragments are ignored.
+ * @param url URL or request path
+ * @return 1 if URL path ends with .m3u or .m3u8, 0 otherwise
+ */
+int rewrite_is_m3u_url(const char *url);
+
+/**
  * Check if Content-Type indicates M3U/M3U8 playlist
  * @param content_type Content-Type header value
  * @return 1 if M3U type, 0 otherwise

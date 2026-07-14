@@ -1065,9 +1065,14 @@ static int http_proxy_parse_response_headers(http_proxy_session_t *session) {
 
   session->headers_received = 1;
 
-  /* Check if response body needs rewriting (M3U content).
+  /* Check if response body needs rewriting (M3U content). URL extension takes
+   * precedence; fall back to Content-Type only when the URL is not M3U-like.
    * Skip for HEAD requests — there is no body to rewrite. */
-  if (rewrite_is_m3u_content_type(session->response_content_type) && strcasecmp(session->method, "HEAD") != 0) {
+  int is_m3u_response = rewrite_is_m3u_url(session->target_path);
+  if (!is_m3u_response)
+    is_m3u_response = rewrite_is_m3u_content_type(session->response_content_type);
+
+  if (is_m3u_response && strcasecmp(session->method, "HEAD") != 0) {
     /* Only rewrite if Content-Length is known and within limits */
     if (session->content_length > 0 && (size_t)session->content_length <= REWRITE_MAX_BODY_SIZE) {
       session->needs_body_rewrite = 1;

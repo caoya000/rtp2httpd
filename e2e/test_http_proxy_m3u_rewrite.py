@@ -533,7 +533,28 @@ class TestM3URewritePassthrough:
 
 
 class TestM3URewriteContentType:
-    """Only M3U content types should trigger rewriting."""
+    """M3U URLs take priority, with Content-Type used as a fallback."""
+
+    @pytest.mark.parametrize(
+        ("route_path", "request_path"),
+        [
+            ("/playlist.m3u8", "/playlist.m3u8"),
+            ("/playlist.m3u", "/playlist.m3u"),
+            ("/playlist.M3U8", "/playlist.M3U8"),
+            ("/playlist.m3u8", "/playlist.m3u8?token=test"),
+        ],
+    )
+    def test_m3u_url_extension_overrides_content_type(self, shared_r2h, route_path, request_path):
+        """M3U path extensions should trigger rewriting regardless of Content-Type."""
+        m3u = "#EXTM3U\n#EXTINF:10,\nhttp://10.0.0.1:8080/seg.ts\n"
+        upstream = _make_m3u_upstream(route_path, m3u, content_type="text/plain")
+        try:
+            status, _, text = _m3u_get(shared_r2h, upstream.port, request_path)
+            assert status == 200
+            assert "http://10.0.0.1:8080/seg.ts" not in text
+            assert "/http/10.0.0.1:8080/seg.ts" in text
+        finally:
+            upstream.stop()
 
     def test_application_vnd_apple_mpegurl(self, shared_r2h):
         """application/vnd.apple.mpegurl should trigger rewriting."""
