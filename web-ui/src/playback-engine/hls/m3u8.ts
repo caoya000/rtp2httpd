@@ -2,13 +2,15 @@
  * Minimal m3u8 playlist parser. Supports only what the player needs:
  * - Media playlist: EXTINF, EXT-X-TARGETDURATION, EXT-X-MEDIA-SEQUENCE,
  *   EXT-X-DISCONTINUITY, EXT-X-ENDLIST, EXT-X-MAP
- * - Multivariant playlist: EXT-X-STREAM-INF media hints
+ * - Multivariant playlist: EXT-X-STREAM-INF media hints and EXT-X-MEDIA audio renditions
  *
  * EXT-X-PLAYLIST-TYPE is ignored: any playlist without EXT-X-ENDLIST (including
  * EVENT) is treated as live and keeps refreshing.
  *
- * Explicitly unsupported: LL-HLS, EXT-X-MEDIA renditions, encryption, byteranges.
+ * Explicitly unsupported: LL-HLS, encryption, byteranges.
  */
+
+import { buildAudioTrackPreferenceKey } from "../types";
 
 export interface HlsPlaylistSegment {
   url: string;
@@ -16,6 +18,7 @@ export interface HlsPlaylistSegment {
   mediaSequence: number;
   discontinuity: boolean;
   initUrl?: string;
+  programDateTime?: number;
 }
 
 export interface HlsMediaPlaylist {
@@ -36,11 +39,24 @@ export interface HlsVariant {
   resolution?: { width: number; height: number };
   frameRate?: number;
   videoRange?: string;
+  audioGroupId?: string;
+}
+
+export interface HlsAudioRendition {
+  id: string;
+  groupId: string;
+  name: string;
+  language?: string;
+  isDefault: boolean;
+  autoselect: boolean;
+  url?: string;
+  preferenceKey: string;
 }
 
 export interface HlsMultivariantPlaylist {
   kind: "multivariant";
   variants: HlsVariant[];
+  audioRenditions: HlsAudioRendition[];
 }
 
 export type HlsPlaylist = HlsMediaPlaylist | HlsMultivariantPlaylist;
@@ -61,6 +77,72 @@ function parseAttributes(input: string): Record<string, string> {
   return attrs;
 }
 
+function yes(value: string | undefined): boolean {
+  return value?.toUpperCase() === "YES";
+}
+
+export function audioRenditionPreferenceKey(groupId: string, name: string, language?: string): string {
+  return buildAudioTrackPreferenceKey(groupId, name, language);
+}
+
+export function selectAudioRendition(
+  renditions: HlsAudioRendition[],
+  preferredAudioTrackKey?: string,
+): HlsAudioRendition | undefined {
+  return (
+    renditions.find((rendition) => rendition.preferenceKey === preferredAudioTrackKey) ??
+    renditions.find((rendition) => rendition.isDefault) ??
+    renditions.find((rendition) => rendition.autoselect) ??
+    renditions[0]
+  );
+}
+
+/** Select the first segment boundary at or after a media-time target, falling back to the last available segment. */
+export function mediaTimeBoundaryIndex(segments: readonly { start: number }[], targetSeconds: number): number {
+  const index = segments.findIndex((segment) => segment.start >= targetSeconds);
+  return index >= 0 ? index : segments.length - 1;
+}
+
+/** Select the segment containing a media-time target, or the nearest available segment. */
+export function mediaTimeSegmentIndex(
+  segments: readonly { start: number; duration: number }[],
+  targetSeconds: number,
+): number {
+  if (segments.length === 0) return -1;
+  const index = segments.findIndex((segment) => targetSeconds < segment.start + segment.duration);
+  return index >= 0 ? index : segments.length - 1;
+}
+
+/** Select the first absolute-time boundary at or after a target, without relying on matching media sequences. */
+export function programDateTimeBoundaryIndex(
+  segments: readonly { programDateTime?: number }[],
+  targetMilliseconds: number,
+): number {
+  let lastDatedIndex = -1;
+  for (let index = 0; index < segments.length; index++) {
+    const programDateTime = segments[index].programDateTime;
+    if (programDateTime === undefined) continue;
+    lastDatedIndex = index;
+    if (programDateTime >= targetMilliseconds) return index;
+  }
+  return lastDatedIndex;
+}
+
+/** Select the segment covering an absolute-time target, without assuming equal rendition boundaries. */
+export function programDateTimeSegmentIndex(
+  segments: readonly { programDateTime?: number; duration: number }[],
+  targetMilliseconds: number,
+): number {
+  let lastDatedIndex = -1;
+  for (let index = 0; index < segments.length; index++) {
+    const segment = segments[index];
+    if (segment.programDateTime === undefined) continue;
+    lastDatedIndex = index;
+    if (targetMilliseconds < segment.programDateTime + segment.duration * 1000) return index;
+  }
+  return lastDatedIndex;
+}
+
 export function parseM3U8(text: string, baseUrl: string): HlsPlaylist {
   const lines = text.split(/\r?\n/).map((l) => l.trim());
   if (!lines.some((l) => l.startsWith("#EXTM3U"))) {
@@ -75,10 +157,27 @@ export function parseM3U8(text: string, baseUrl: string): HlsPlaylist {
 
 function parseMultivariant(lines: string[], baseUrl: string): HlsMultivariantPlaylist {
   const variants: HlsVariant[] = [];
+  const audioRenditions: HlsAudioRendition[] = [];
   let pending: Omit<HlsVariant, "url"> | null = null;
 
   for (const line of lines) {
-    if (line.startsWith("#EXT-X-STREAM-INF:")) {
+    if (line.startsWith("#EXT-X-MEDIA:")) {
+      const attrs = parseAttributes(line.slice("#EXT-X-MEDIA:".length));
+      if (attrs.TYPE !== "AUDIO" || !attrs["GROUP-ID"]) continue;
+      const groupId = attrs["GROUP-ID"];
+      const name = attrs.NAME || attrs.LANGUAGE || `Audio ${audioRenditions.length + 1}`;
+      const preferenceKey = audioRenditionPreferenceKey(groupId, name, attrs.LANGUAGE);
+      audioRenditions.push({
+        id: `${preferenceKey}\u001f${audioRenditions.length}`,
+        groupId,
+        name,
+        language: attrs.LANGUAGE,
+        isDefault: yes(attrs.DEFAULT),
+        autoselect: yes(attrs.AUTOSELECT),
+        url: attrs.URI ? new URL(attrs.URI, baseUrl).href : undefined,
+        preferenceKey,
+      });
+    } else if (line.startsWith("#EXT-X-STREAM-INF:")) {
       const attrs = parseAttributes(line.slice("#EXT-X-STREAM-INF:".length));
       const resolutionMatch = /^(\d+)x(\d+)$/i.exec(attrs.RESOLUTION ?? "");
       const averageBandwidth = Number.parseInt(attrs["AVERAGE-BANDWIDTH"] ?? "", 10);
@@ -92,6 +191,7 @@ function parseMultivariant(lines: string[], baseUrl: string): HlsMultivariantPla
           : undefined,
         frameRate: Number.isFinite(frameRate) && frameRate > 0 ? frameRate : undefined,
         videoRange: attrs["VIDEO-RANGE"],
+        audioGroupId: attrs.AUDIO,
       };
     } else if (pending && line.length > 0 && !line.startsWith("#")) {
       variants.push({ url: new URL(line, baseUrl).href, ...pending });
@@ -99,7 +199,7 @@ function parseMultivariant(lines: string[], baseUrl: string): HlsMultivariantPla
     }
   }
 
-  return { kind: "multivariant", variants };
+  return { kind: "multivariant", variants, audioRenditions };
 }
 
 function parseMedia(lines: string[], baseUrl: string): HlsMediaPlaylist {
@@ -110,6 +210,7 @@ function parseMedia(lines: string[], baseUrl: string): HlsMediaPlaylist {
   let pendingDuration: number | null = null;
   let pendingDiscontinuity = false;
   let currentInitUrl: string | undefined;
+  let pendingProgramDateTime: number | undefined;
   let totalDuration = 0;
 
   for (const line of lines) {
@@ -129,19 +230,27 @@ function parseMedia(lines: string[], baseUrl: string): HlsMediaPlaylist {
       if (attrs.URI) {
         currentInitUrl = new URL(attrs.URI, baseUrl).href;
       }
+    } else if (line.startsWith("#EXT-X-PROGRAM-DATE-TIME:")) {
+      const parsed = Date.parse(line.slice("#EXT-X-PROGRAM-DATE-TIME:".length));
+      pendingProgramDateTime = Number.isFinite(parsed) ? parsed : undefined;
     } else if (line.startsWith("#EXT-X-ENDLIST")) {
       ended = true;
     } else if (line.length > 0 && !line.startsWith("#") && pendingDuration !== null) {
+      const duration = pendingDuration;
       segments.push({
         url: new URL(line, baseUrl).href,
-        duration: pendingDuration,
+        duration,
         mediaSequence: mediaSequence + segments.length,
         discontinuity: pendingDiscontinuity,
         initUrl: currentInitUrl,
+        programDateTime: pendingProgramDateTime,
       });
-      totalDuration += pendingDuration;
+      totalDuration += duration;
       pendingDuration = null;
       pendingDiscontinuity = false;
+      if (pendingProgramDateTime !== undefined) {
+        pendingProgramDateTime += duration * 1000;
+      }
     }
   }
 
