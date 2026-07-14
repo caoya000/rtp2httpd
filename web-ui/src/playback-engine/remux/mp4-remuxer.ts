@@ -1,4 +1,3 @@
-import { classifyTimestampOverlap, mapContinuousPcmRange } from "../timeline/ts-continuity";
 import { isFirefox } from "../utils/browser";
 import { IllegalStateException } from "../utils/exception";
 import Log from "../utils/logger";
@@ -98,7 +97,7 @@ interface TrackTimingState {
   durationResidual: number;
 }
 
-type PcmTimestampMapping = { action: "drop" } | { action: "emit"; time: number; trimStartFrames: number };
+type PcmTimestampMapping = { action: "drop" } | { action: "emit"; time: number; trimStartMs: number };
 
 type InitSegmentCallback = (type: string, segment: InitSegment) => void;
 type MediaSegmentCallback = (type: string, segment: MediaSegment) => void;
@@ -137,7 +136,6 @@ class MP4Remuxer {
   private _audioTiming: TrackTimingState;
   private _videoTiming: TrackTimingState;
   private _pcmTiming: TrackTimingState;
-  private _pcmNextDts: number | undefined;
   private _videoPresentationOffset: number | undefined;
   private _videoInitialPresentationOffset: number | undefined;
   private _videoInitialOutputTime: number | undefined;
@@ -153,6 +151,7 @@ class MP4Remuxer {
   private _silentAudioMode: boolean;
   private _silentAudioLastDts: number | undefined;
   private _silentAudioDurationResidual: number;
+  private _tsSegmentContinuityNormalization: boolean;
   private _mediaSegmentBatchDurationMs: number;
   private _mediaSegmentBatchMaxBytes: number;
   private _audioMediaSegmentEmitted: boolean;
@@ -174,7 +173,6 @@ class MP4Remuxer {
     this._audioTiming = this._createTrackTimingState();
     this._videoTiming = this._createTrackTimingState();
     this._pcmTiming = this._createTrackTimingState();
-    this._pcmNextDts = undefined;
     this._videoPresentationOffset = undefined;
     this._videoInitialPresentationOffset = undefined;
     this._videoInitialOutputTime = undefined;
@@ -191,6 +189,7 @@ class MP4Remuxer {
     this._silentAudioMode = false;
     this._silentAudioLastDts = undefined;
     this._silentAudioDurationResidual = 0;
+    this._tsSegmentContinuityNormalization = false;
     this._mediaSegmentBatchDurationMs = normalizeMediaBatchLimit(
       options.mediaSegmentBatchDurationMs,
       DEFAULT_MEDIA_SEGMENT_BATCH_DURATION_MS,
@@ -210,12 +209,12 @@ class MP4Remuxer {
     this._silentAudioMode = false;
     this._silentAudioLastDts = undefined;
     this._silentAudioDurationResidual = 0;
+    this._tsSegmentContinuityNormalization = false;
     this._audioMediaSegmentEmitted = false;
     this._videoMediaSegmentEmitted = false;
     this._audioTiming = this._createTrackTimingState();
     this._videoTiming = this._createTrackTimingState();
     this._pcmTiming = this._createTrackTimingState();
-    this._pcmNextDts = undefined;
     this._videoPresentationOffset = undefined;
     this._videoInitialPresentationOffset = undefined;
     this._videoInitialOutputTime = undefined;
@@ -257,6 +256,7 @@ class MP4Remuxer {
   }
 
   insertDiscontinuity(): void {
+    this._audioNextDts = this._videoNextDts = undefined;
     this._silentAudioLastDts = undefined;
     this._silentAudioDurationResidual = 0;
     this._videoPresentationOffset = undefined;
@@ -272,7 +272,6 @@ class MP4Remuxer {
     this._audioStashedLastSample = null;
     this._audioTiming = this._createTrackTimingState();
     this._pcmTiming = this._createTrackTimingState();
-    this._pcmNextDts = nextDtsMs;
     this._audioMeta = null;
     this._silentAudioMode = false;
     this._silentAudioLastDts = undefined;
@@ -303,6 +302,10 @@ class MP4Remuxer {
         flags: { isLeading: 0, dependsOn: 1, isDependedOn: 0, hasRedundancy: 0 },
       },
     ]);
+  }
+
+  setTsSegmentContinuityNormalization(enabled: boolean): void {
+    this._tsSegmentContinuityNormalization = enabled;
   }
 
   private _createTrackTimingState(): TrackTimingState {
@@ -356,25 +359,20 @@ class MP4Remuxer {
     timing: TrackTimingState,
     mdatBytes: number,
   ): number {
+    if (!this._tsSegmentContinuityNormalization) {
+      return mdatBytes;
+    }
+
     const lastOriginalDts = timing.lastOriginalDts;
     if (lastOriginalDts === undefined) {
       return mdatBytes;
     }
 
-    const firstOriginalDts = samples[0].dts - this._dtsBase;
-    const decision = classifyTimestampOverlap(firstOriginalDts, lastOriginalDts);
-    if (decision === "restart") {
-      Log.w(this.TAG, `Keeping samples after ${Math.round(lastOriginalDts - firstOriginalDts)}ms timestamp restart`);
-      timing.lastOriginalDts = undefined;
-      timing.lastOriginalEndDts = undefined;
-      timing.durationResidual = 0;
-      return mdatBytes;
-    }
-    if (decision !== "skip") return mdatBytes;
-
     while (samples.length > 0) {
       const originalDts = samples[0].dts - this._dtsBase;
-      if (originalDts > lastOriginalDts) break;
+      if (originalDts > lastOriginalDts) {
+        break;
+      }
 
       const sample = samples.shift() as T;
       mdatBytes -= sample.length;
@@ -642,21 +640,17 @@ class MP4Remuxer {
     return this._videoInitialOutputTime ?? 0;
   }
 
-  mapPcmTimestamp(ptsMs: number, frameCount: number, sampleRate: number): PcmTimestampMapping | undefined {
+  mapPcmTimestamp(ptsMs: number, durationMs: number): PcmTimestampMapping | undefined {
     if (!this._dtsBaseInited) {
       return undefined;
     }
 
     const originalTime = ptsMs - this._dtsBase;
-    const totalFrames = Math.max(0, frameCount);
-    const duration = (totalFrames / sampleRate) * 1000;
+    const duration = Math.max(0, durationMs);
     let outputTime: number;
-    let trimStartFrames = 0;
+    let trimStartMs = 0;
 
-    if (this._pcmNextDts !== undefined) {
-      outputTime = this._pcmNextDts;
-      this._pcmNextDts = undefined;
-    } else if (this._pcmTiming.lastOriginalEndDts === undefined || this._pcmTiming.lastOutputEndDts === undefined) {
+    if (this._pcmTiming.lastOriginalEndDts === undefined || this._pcmTiming.lastOutputEndDts === undefined) {
       if (
         this._videoDtsBase !== Infinity &&
         (this._videoInitialPresentationOffset === undefined || this._videoInitialOutputTime === undefined)
@@ -672,25 +666,17 @@ class MP4Remuxer {
         return { action: "drop" };
       }
 
-      trimStartFrames = Math.min(
-        totalFrames,
-        Math.ceil((Math.max(0, presentationFloor - presentationStart) * sampleRate) / 1000 - 1e-9),
-      );
+      trimStartMs = Math.max(0, presentationFloor - presentationStart);
       outputTime = Math.max(presentationFloor, presentationStart);
     } else {
-      const mapping = mapContinuousPcmRange({
-        originalStartMs: originalTime,
-        frameCount: totalFrames,
-        sampleRate,
-        lastOriginalEndMs: this._pcmTiming.lastOriginalEndDts,
-        lastOutputEndMs: this._pcmTiming.lastOutputEndDts,
-      });
-      if (mapping.action === "drop") return mapping;
-      outputTime = mapping.outputStartMs;
-      trimStartFrames = mapping.trimStartFrames;
+      const distance = originalTime - this._pcmTiming.lastOriginalEndDts;
+      outputTime = this._pcmTiming.lastOutputEndDts + (distance > 0 ? 0 : distance);
+      if (distance > 0) {
+        Log.v(this.TAG, `PCM: bridging ${Math.round(distance)}ms timestamp hole`);
+      }
     }
 
-    const emittedDuration = ((totalFrames - trimStartFrames) / sampleRate) * 1000;
+    const emittedDuration = duration - trimStartMs;
     if (emittedDuration <= 0) {
       return { action: "drop" };
     }
@@ -698,7 +684,7 @@ class MP4Remuxer {
     this._pcmTiming.lastOriginalEndDts = originalTime + duration;
     this._pcmTiming.lastOutputEndDts = outputTime + emittedDuration;
     this._pcmTiming.lastOutputDuration = emittedDuration;
-    return { action: "emit", time: outputTime / 1000, trimStartFrames };
+    return { action: "emit", time: outputTime / 1000, trimStartMs };
   }
 
   flushStashedSamples(): void {
@@ -988,9 +974,8 @@ class MP4Remuxer {
       const isKeyframe = sample.isKeyframe;
 
       const dts = nextOutputDts;
-      // Apply the exact DTS translation to PTS as well. This keeps CTS stable
-      // when a TS segment gap or overlap is collapsed onto the output timeline.
-      const correctedPtsBase = dts + sample.cts;
+      const originalPts = originalDts + sample.cts;
+      const correctedPtsBase = this._tsSegmentContinuityNormalization ? originalPts - dtsCorrection : originalPts;
       if (this._videoPresentationOffset === undefined) {
         this._videoPresentationOffset = correctedPtsBase - dts;
         if (this._videoInitialPresentationOffset === undefined) {

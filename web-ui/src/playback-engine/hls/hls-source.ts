@@ -145,7 +145,7 @@ export class HlsSource implements SegmentSource {
         const meta = this.segments[this.nextIndex++];
         if (this.resetPending) {
           this.resetPending = false;
-          return { ...meta, resetReason: "initial" };
+          return { ...meta, resetRemuxer: true };
         }
         return meta;
       }
@@ -248,7 +248,7 @@ export class HlsSource implements SegmentSource {
         url: seg.url,
         start: this.timelinePos,
         duration: seg.duration,
-        resetReason: seg.discontinuity || skipped ? "playlist-reset" : undefined,
+        resetRemuxer: seg.discontinuity || skipped,
         initUrl: seg.initUrl,
       });
       this.timelinePos += seg.duration;

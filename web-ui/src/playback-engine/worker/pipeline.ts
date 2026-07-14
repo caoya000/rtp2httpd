@@ -1,7 +1,7 @@
 import type { PlayerConfig } from "../config";
 import { createDefaultConfig } from "../config";
 import { WorkerAudioDecoder } from "../decoder/worker-audio-decoder";
-import TSDemuxer, { type RawMp2AudioFrame, type TSAudioTrackInfo } from "../demux/ts-demuxer";
+import TSDemuxer, { type TSAudioTrackInfo } from "../demux/ts-demuxer";
 import { type DemuxErrorDetail, type LoaderErrorDetail, PlayerErrors } from "../errors";
 import {
   containsMoov,
@@ -171,7 +171,6 @@ class Pipeline {
   private _fmp4Timescales = new Map<number, number>();
   private _fmp4TimestampOffsetWarningLogged = false;
   private _timelineAnchorSent = false;
-  private _resetAudioParserAtNextTsBoundary = false;
 
   // --- player-facing media metadata ---
   private _mediaInfo: PlayerMediaInfo = {};
@@ -200,6 +199,7 @@ class Pipeline {
     channels: number;
     sampleRate: number;
     ptsMs: number;
+    durationMs: number;
   }> = [];
   /** Incremented on audio timing resets to invalidate decode callbacks queued before the reset. */
   private _audioGen = 0;
@@ -559,7 +559,6 @@ class Pipeline {
     this._fmp4Timescales = new Map();
     this._fmp4TimestampOffsetWarningLogged = false;
     this._timelineAnchorSent = false;
-    this._resetAudioParserAtNextTsBoundary = false;
     this._paused = false;
     this._sourceMode = "static-ts-list";
     this._resumeGate?.();
@@ -626,7 +625,7 @@ class Pipeline {
       }
 
       try {
-        if (this._shouldResetTransmux(meta)) {
+        if (meta.resetRemuxer) {
           const initSegmentChanged = meta.initUrl !== undefined && meta.initUrl !== this._lastInitUrl;
           this._resetTransmux(meta.start, !this._fmp4Mode || initSegmentChanged);
         }
@@ -688,12 +687,8 @@ class Pipeline {
     this._resetAudioDecodeState();
   }
 
-  private _shouldResetTransmux(meta: SegmentMeta): boolean {
-    return meta.resetReason === "initial" || (meta.resetReason === "playlist-reset" && this._fmp4Mode);
-  }
-
   private _shouldAnchorSegment(meta: SegmentMeta): boolean {
-    return this._shouldResetTransmux(meta) || !this._hlsSource;
+    return meta.resetRemuxer || !this._hlsSource;
   }
 
   private _finishTsInputBoundary(): void {
@@ -701,6 +696,7 @@ class Pipeline {
     // remux batch is not mixed with the previous segment's tail.
     this._demuxer?.flushSegmentBoundary();
     this._remuxer?.flushStashedSamples();
+    this._resetAudioDecodeState();
   }
 
   private _prepareContinuousLiveTsRestart(meta: SegmentMeta, ioctl: FetchLoader): void {
@@ -709,8 +705,6 @@ class Pipeline {
     }
 
     this._finishTsInputBoundary();
-    this._resetAudioParserAtNextTsBoundary = true;
-    this._resetAudioDecodeState();
     this._fmp4Mode = false;
     this._fmp4Chunks = [];
     ioctl.onDataArrival = (data, byteStart) => this._onInputChunk(meta, data, byteStart);
@@ -825,12 +819,11 @@ class Pipeline {
     const canReuseHls = this._hlsSource !== null && !shouldAnchor && this._demuxer !== null && this._remuxer !== null;
     const canReuseTsInputBoundary = this._sourceMode !== "hls" && this._demuxer !== null && this._remuxer !== null;
     const canReuse = canReuseHls || canReuseTsInputBoundary;
-    const resetAudioParserState = this._resetAudioParserAtNextTsBoundary;
-    this._resetAudioParserAtNextTsBoundary = false;
     if (canReuse) {
       this._demuxer?.resetSegmentBoundary(probeData as ConstructorParameters<typeof TSDemuxer>[0], {
-        resetAudioParserState,
+        resetAudioParserState: canReuseTsInputBoundary,
       });
+      this._remuxer?.setTsSegmentContinuityNormalization(canReuseTsInputBoundary);
       return;
     }
 
@@ -855,6 +848,8 @@ class Pipeline {
       }
       this._pendingDtsOffsetMs = 0;
     }
+    this._remuxer.setTsSegmentContinuityNormalization(false);
+
     demuxer.onError = this._onDemuxException.bind(this);
     demuxer.timestampBase = 0;
     demuxer.onTrackDiscontinuity = (track) => {
@@ -1056,7 +1051,10 @@ class Pipeline {
 
   // ---- MP2 software audio decode ----
 
-  private _handleRawAudioFrame(frame: RawMp2AudioFrame, needsOwnTimelineBase: boolean): void {
+  private _handleRawAudioFrame(
+    frame: { codec: "mp2"; data: Uint8Array; pts: number },
+    needsOwnTimelineBase: boolean,
+  ): void {
     // Lazily create WorkerAudioDecoder on first raw audio frame
     if (!this._workerAudioDecoder) {
       const mp2Url = this._config.wasmDecoders.mp2;
@@ -1073,23 +1071,27 @@ class Pipeline {
       const result = this._workerAudioDecoder.decode(frame.data);
       if (!result) return;
 
-      // A real PES PTS always wins so the continuity mapper can observe source
-      // gaps and overlaps. Sample-count extrapolation is used only when the PES
-      // genuinely carries no timestamp.
+      // PTS extrapolation: anchor on the PES PTS, advance by decoded sample count.
+      // This gives every decoded chunk a jitter-free timestamp even when frames
+      // straddle PES boundaries or a PES contains multiple frames. Re-anchor only
+      // on genuine discontinuities (> 100ms deviation).
       const sr = result.sampleRate;
       const carriedSamples = Math.min(Math.max(0, result.samplesBeforeInput), result.samplesPerChannel);
-      const decodedStartPts = frame.pts === undefined ? undefined : frame.pts - (carriedSamples / sr) * 1000;
+      const decodedStartPts = frame.pts - (carriedSamples / sr) * 1000;
       if (this._audioAnchorPtsMs === null || this._audioSampleRate !== sr) {
-        if (decodedStartPts === undefined) {
-          Log.w(this.TAG, "Dropping decoded MP2 audio until the first timestamped PES");
-          return;
-        }
         this._audioAnchorPtsMs = decodedStartPts;
         this._audioSamplesSinceAnchor = 0;
         this._audioSampleRate = sr;
-      } else if (decodedStartPts !== undefined) {
-        this._audioAnchorPtsMs = decodedStartPts;
-        this._audioSamplesSinceAnchor = 0;
+      } else {
+        const extrapolatedMs = this._audioAnchorPtsMs + (this._audioSamplesSinceAnchor / sr) * 1000;
+        if (Math.abs(decodedStartPts - extrapolatedMs) > 100) {
+          Log.v(
+            this.TAG,
+            `Audio PTS discontinuity: decoded=${decodedStartPts.toFixed(1)}ms extrap=${extrapolatedMs.toFixed(1)}ms`,
+          );
+          this._audioAnchorPtsMs = decodedStartPts;
+          this._audioSamplesSinceAnchor = 0;
+        }
       }
       const ptsMs = this._audioAnchorPtsMs + (this._audioSamplesSinceAnchor / sr) * 1000;
       this._audioSamplesSinceAnchor += result.samplesPerChannel;
@@ -1110,8 +1112,9 @@ class Pipeline {
     ptsMs: number,
     needsOwnTimelineBase: boolean,
   ): void {
+    const durationMs = (Math.floor(pcm.length / channels) / sampleRate) * 1000;
     if (needsOwnTimelineBase) this._remuxer?.ensureAudioTimestampBase(ptsMs);
-    this._pendingPcm.push({ pcm, channels, sampleRate, ptsMs });
+    this._pendingPcm.push({ pcm, channels, sampleRate, ptsMs, durationMs });
 
     if (this._remuxer?.getTimestampBase() === undefined) {
       // Bound the queue: ~25s of audio at one payload per ~72ms is plenty
@@ -1126,8 +1129,7 @@ class Pipeline {
 
     for (let i = 0; i < pending.length; i++) {
       const item = pending[i];
-      const totalFrames = Math.floor(item.pcm.length / item.channels);
-      const mapping = this._remuxer?.mapPcmTimestamp(item.ptsMs, totalFrames, item.sampleRate);
+      const mapping = this._remuxer?.mapPcmTimestamp(item.ptsMs, item.durationMs);
       if (mapping === undefined) {
         this._pendingPcm.push(...pending.slice(i));
         if (this._pendingPcm.length > 512) {
@@ -1140,11 +1142,15 @@ class Pipeline {
       }
 
       let pcm = item.pcm;
-      if (mapping.trimStartFrames > 0) {
-        if (mapping.trimStartFrames >= totalFrames) {
+      if (mapping.trimStartMs > 0) {
+        const cutFrames = Math.round((mapping.trimStartMs / 1000) * item.sampleRate);
+        const totalFrames = Math.floor(pcm.length / item.channels);
+        if (cutFrames >= totalFrames) {
           continue;
         }
-        pcm = pcm.slice(mapping.trimStartFrames * item.channels);
+        if (cutFrames > 0) {
+          pcm = pcm.slice(cutFrames * item.channels);
+        }
       }
       if (this._forcedTrack === "audio") {
         this._remuxer?.remuxSilentAudioRange(
