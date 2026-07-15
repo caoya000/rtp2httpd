@@ -16,7 +16,24 @@
 #include <string.h>
 #include <strings.h>
 
-/* ========== M3U Content-Type Detection ========== */
+/* ========== M3U Detection ========== */
+
+int rewrite_is_m3u_url(const char *url) {
+  if (!url)
+    return 0;
+
+  const char *path_end = strpbrk(url, "?#");
+  if (!path_end)
+    path_end = url + strlen(url);
+
+  size_t path_len = (size_t)(path_end - url);
+  if (path_len >= 5 && strncasecmp(path_end - 5, ".m3u8", 5) == 0)
+    return 1;
+  if (path_len >= 4 && strncasecmp(path_end - 4, ".m3u", 4) == 0)
+    return 1;
+
+  return 0;
+}
 
 int rewrite_is_m3u_content_type(const char *content_type) {
   if (!content_type)
