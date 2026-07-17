@@ -415,7 +415,7 @@ function o.write(self, section, value)
 end
 
 o = s:taboption("basic", DynamicList, "listen", i18n.translate("Listen Addresses"), i18n.translate("HTTP listen addresses. Use a bare port for all addresses (e.g., 5140), address:port for IPv4/hostnames, [IPv6]:port, or an absolute Unix socket path."))
-o.default = "5140"
+o.placeholder = "5140"
 o.rmempty = true
 depends_on_uci_mode(o)
 function o.cfgvalue(self, section)
